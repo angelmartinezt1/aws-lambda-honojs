@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"                  # Ubicación del package.json
+    schedule:
+      interval: "weekly"            # Puede ser: "daily", "weekly", "monthly"
+    target-branch: "develop"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    assignees:
+      - angelmartinezt1                 # Opcional: asigna PRs a alguien
