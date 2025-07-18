@@ -1,9 +1,9 @@
 import { serve } from '@hono/node-server'
 import app from './app.js'
+import serverConfig from './config/server.js'
 
-const port = process.env.PORT ? Number(process.env.PORT) : 3000
-const server = serve({ fetch: app.fetch, port })
-console.log(`Server running at http://localhost:${port}`)
+const server = serve({ fetch: app.fetch, port: serverConfig.port })
+console.log(`Server running at http://localhost:${serverConfig.port}`)
 
 // graceful shutdown
 process.on('SIGINT', () => {
