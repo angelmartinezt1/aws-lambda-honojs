@@ -8,7 +8,7 @@ const app = new Hono()
 app.use(logger())
 app.use('*', cors(corsConfig))
 app.get('/', (c) => {
-  return c.text('Hello Hono! Local')
+  return c.json('Hello Hono! Local')
 })
 
 export default app
