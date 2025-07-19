@@ -1,0 +1,8 @@
+{
+  // Lista de extensiones recomendadas para este proyecto
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "ms-vscode.vscode-typescript-next",
+    "humao.rest-client"
+  ]
+}
