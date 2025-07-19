@@ -1,1 +1,28 @@
-http://localhost:3080
+### Obtener todos los TODOs
+GET http://localhost:3000/todo
+
+### Crear un TODO
+POST http://localhost:3000/todo
+Content-Type: application/json
+
+{
+  "title": "Mi primer TODasasaO"
+}
+
+### Obtener un TODO por ID
+# Reemplaza {{id}} por un ID real obtenido de la respuesta anterior
+GET http://localhost:3000/todo/{{id}}
+
+### Actualizar un TODO
+# Reemplaza {{id}} por un ID real
+PUT http://localhost:3000/todo/{{id}}
+Content-Type: application/json
+
+{
+  "title": "Actualizado",
+  "completed": true
+}
+
+### Eliminar un TODO
+# Reemplaza {{id}} por un ID real
+DELETE http://localhost:3000/todo/{{id}}
