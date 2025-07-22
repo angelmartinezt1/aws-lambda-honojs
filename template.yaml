@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  t1-nodejs-ordersv2
+  
+  Node.js 18.x Express API for Orders using serverless-http with VPC
+
+# Parámetros actualizados para compatibilidad con GitHub Actions
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - production
+    Description: Environment name (development/production)
+  
+  DbHost:
+    Type: String
+    Description: Database host (configured via GitHub Secrets)
+  DbUser:
+    Type: String
+    Description: Database user (configured via GitHub Secrets)
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Description: Database password (configured via GitHub Secrets)
+  DbName:
+    Type: String
+    Description: Database name (configured via GitHub Secrets) 
+  
+  VpcId:
+    Type: String
+    Description: VPC ID for Lambda function
+  
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: Subnet IDs for Lambda function (comma-separated)
+  
+  SecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: Security Group IDs for Lambda function (comma-separated)
+  
+  ApiGatewayStageName:
+    Type: String
+    Default: dev
+    Description: API Gateway stage name
+
+# Condiciones para diferentes ambientes
+Conditions:
+  IsProd: !Equals [!Ref Environment, "production"]
+  IsDev: !Equals [!Ref Environment, "development"]
+
+# Variables globales
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs22.x
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        NODE_ENV: !Ref Environment
+        LOG_LEVEL: !If [IsProd, "info", "debug"]
+        SERVICE_NAME: aws-lambda-honojs
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    VpcConfig:
+      SecurityGroupIds: !Ref SecurityGroupIds
+      SubnetIds: !Ref SubnetIds
+
+Resources:
+  # Función Lambda principal
+  HonorJSFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "aws-lambda-honojs-${Environment}"
+      CodeUri: ./dist
+      Handler: lambda.handler
+      Description: !Sub "AWS Lambda Hono.js - ${Environment}"
+      Environment:
+        Variables:
+          # Variables de base de datos - configuradas desde GitHub Secrets
+          DB_HOST: !Ref DbHost
+          DB_USER: !Ref DbUser
+          DB_PASSWORD: !Ref DbPassword
+          DB_NAME: !Ref DbName
+          DB_PORT: "3306"
+          DB_CONNECTION_LIMIT: "10"
+          DB_CONNECT_TIMEOUT: "10000"
+          
+          # Variables de APIs externas (diferentes por ambiente)
+          PRODUCTS_API_URL: !If 
+            - IsProd
+            - "https://prod-api.example.com"
+            - "https://gj348705dh.execute-api.us-east-1.amazonaws.com/Dev"
+          SELLER_ID: "32615"
+          
+          # Variables de configuración
+          REQUEST_TIMEOUT: "5000"
+          MAX_BATCH_SIZE: "50"
+          CONCURRENCY_LIMIT: "10"
+          CACHE_TTL: "300000"
+          
+          # Variables de logging
+          LOG_HTTP_REQUESTS: !If [IsProd, "false", "true"]
+          LOG_HTTP_RESPONSES: !If [IsProd, "false", "true"]
+          LOG_REQUEST_BODY: "false"
+      
+      Events:
+        # Catch-all para todas las rutas
+        ProxyApiRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HonoRestApi
+            Path: /
+            Method: ANY
+        
+        ProxyApiGreedy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HonoRestApi
+            Path: /{proxy+}
+            Method: ANY
+      
+      # Permisos necesarios
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            # Permisos para invocar otras Lambdas
+            - Effect: Allow
+              Action:
+                - lambda:InvokeFunction
+              Resource: 
+                - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:t1-quarkus-abandoned"
+            
+            # Permisos para CloudWatch Logs
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+            
+            # Permisos para VPC (necesarios para Lambda en VPC)
+            - Effect: Allow
+              Action:
+                - ec2:CreateNetworkInterface
+                - ec2:DescribeNetworkInterfaces
+                - ec2:DeleteNetworkInterface
+                - ec2:AttachNetworkInterface
+                - ec2:DetachNetworkInterface
+              Resource: "*"
+  
+  # API Gateway REST API
+  HonoRestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "aws-lambda-honojs-${Environment}"
+      StageName: !Ref ApiGatewayStageName
+      EndpointConfiguration:
+        Type: REGIONAL
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-request-id'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      # Configuración adicional para diferentes ambientes
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: !If [IsProd, "ERROR", "INFO"]
+          DataTraceEnabled: !If [IsProd, false, true]
+          MetricsEnabled: true
+      
+      # Tags para organización
+      # Tags:
+      #   Environment: !Ref Environment
+      #   Service: t1-nodejs-ordersv2
+      #   Project: t1-platform
+
+  # CloudWatch Log Group para Lambda
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/aws-lambda-honojs-${Environment}"
+      RetentionInDays: !If [IsProd, 30, 7]  # Más retención en prod
+
+  # CloudWatch Log Group para API Gateway (opcional)
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/aws-lambda-honojs-${Environment}"
+      RetentionInDays: !If [IsProd, 30, 7]
+
+# Outputs actualizados
+Outputs:
+  ApiUrl:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${HonoRestApi}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStageName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  ApiId:
+    Description: "API Gateway REST API ID"
+    Value: !Ref HonoRestApi
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiId"
+
+  LambdaFunctionArn:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt HonorJSFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaArn"
+
+  LambdaFunctionName:
+    Description: "Lambda Function Name"
+    Value: !Ref HonorJSFunction
+    Export:
+      Name: !Sub "${AWS::StackName}-LambdaName"
+
+  Environment:
+    Description: "Deployment Environment"
+    Value: !Ref Environment
+    Export:
+      Name: !Sub "${AWS::StackName}-Environment"
+
+  VpcId:
+    Description: "VPC ID used"
+    Value: !Ref VpcId
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"

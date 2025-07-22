@@ -1,0 +1,21 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "aws-lambda-honojs"
+resolve_s3 = true
+s3_prefix = "aws-lambda-honojs"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+disable_rollback = true
+parameter_overrides = [
+  "Environment=development",
+  "VpcId=vpc-0c61eb9df3656e977",
+  "SubnetIds=subnet-0fe006909db8f405c",
+  "SecurityGroupIds=sg-02bc4e64a10747eff",
+  "DbHost=mydb.cluster-xxxxxx.us-east-1.rds.amazonaws.com",
+  "DbUser=apporders",
+  "DbPassword=mysecretpassword",
+  "DbName=orders_hub",
+  "ApiGatewayStageName=dev"
+]
+image_repositories = []

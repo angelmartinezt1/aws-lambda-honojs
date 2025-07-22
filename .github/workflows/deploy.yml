@@ -1,0 +1,151 @@
+name: Deploy T1 Node.js Orders API v2
+
+on:
+  push:
+    branches: [develop, main, master]
+  pull_request:
+    types: [closed]
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - development
+        - production
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/master' && 'production' || 'development') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/master" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENVIRONMENT="production"
+          else
+            ENVIRONMENT="development"
+          fi
+          
+          echo "ENVIRONMENT=${ENVIRONMENT}" >> $GITHUB_ENV
+          echo "STACK_NAME=t1-nodejs-ordersv2-${ENVIRONMENT}" >> $GITHUB_ENV
+          echo "🚀 Deploying to ${ENVIRONMENT} environment"
+
+      - name: Setup Python for SAM CLI
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install AWS tools
+        run: |
+          echo "🔧 Installing AWS tools..."
+          python -m pip install --upgrade pip
+          pip install aws-sam-cli awscli
+          echo "✅ AWS tools installed"
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_OIDC }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check and handle existing stack
+        run: |
+          echo "🔍 Checking stack status: ${{ env.STACK_NAME }}"
+          
+          if aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} 2>/dev/null; then
+            STACK_STATUS=$(aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --query "Stacks[0].StackStatus" --output text)
+            echo "📊 Stack exists with status: $STACK_STATUS"
+            
+            if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STACK_STATUS" = "CREATE_FAILED" ]; then
+              echo "🗑️ Deleting failed stack..."
+              aws cloudformation delete-stack --stack-name ${{ env.STACK_NAME }}
+              aws cloudformation wait stack-delete-complete --stack-name ${{ env.STACK_NAME }}
+              echo "✅ Stack deleted"
+            fi
+          else
+            echo "ℹ️ Stack does not exist - will create new stack"
+          fi
+
+      - name: Build with esbuild
+        run: |
+          echo "📦 Building with esbuild..."
+          npm install
+          npm run build
+
+      - name: Deploy with SAM
+        run: |
+          echo "🚀 Deploying to ${{ env.ENVIRONMENT }} environment..."
+          
+          # Create samconfig.toml
+          cat > samconfig.toml << EOF
+          version = 0.1
+          [default.deploy.parameters]
+          stack_name = "${{ env.STACK_NAME }}"
+          resolve_s3 = true
+          s3_prefix = "t1-nodejs-ordersv2"
+          region = "${{ env.AWS_REGION }}"
+          confirm_changeset = false
+          capabilities = "CAPABILITY_IAM"
+          parameter_overrides = [
+            "Environment=${{ env.ENVIRONMENT }}",
+            "SecurityGroupIds=${{ vars.SECURITY_GROUP_IDS || 'sg-015f5b3d71c3da12b' }}",
+            "SubnetIds=${{ vars.SUBNET_IDS }}",
+            "VpcId=${{ vars.VPC_ID }}",
+            "DbHost=${{ vars.DB_HOST}}",
+            "DbUser=${{ vars.DB_USER || 'apporders' }}",
+            "DbPassword=${{ secrets.DB_PASSWORD }}",
+            "DbName=${{ vars.DB_NAME || 'orders_hub' }}",
+            "ApiGatewayStageName=${{ vars.API_GATEWAY_STAGE_NAME || 'dev' }}"
+          ]
+          EOF
+          
+          # Deploy
+          sam deploy --no-fail-on-empty-changeset
+
+      - name: Get deployment outputs
+        id: outputs
+        run: |
+          echo "📊 Getting deployment outputs..."
+          
+          OUTPUTS=$(aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} --query "Stacks[0].Outputs" --output json)
+          
+          API_URL=$(echo $OUTPUTS | jq -r '.[] | select(.OutputKey=="ApiUrl") | .OutputValue // "N/A"')
+          LAMBDA_NAME=$(echo $OUTPUTS | jq -r '.[] | select(.OutputKey=="LambdaFunctionName") | .OutputValue // "N/A"')
+          
+          echo "api-url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "lambda-name=${LAMBDA_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Output deployment information
+        if: success()
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo ""
+          echo "📋 Deployment Information:"
+          echo "├── Environment: ${{ env.ENVIRONMENT }}"
+          echo "├── Stack: ${{ env.STACK_NAME }}"
+          echo "├── Region: ${{ env.AWS_REGION }}"
+          echo "├── API URL: ${{ steps.outputs.outputs.api-url }}"
+          echo "└── Lambda: ${{ steps.outputs.outputs.lambda-name }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check CloudFormation console for details."
