@@ -179,19 +179,7 @@ Resources:
       #   Service: t1-nodejs-ordersv2
       #   Project: t1-platform
 
-  # CloudWatch Log Group para Lambda
-  LambdaLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/aws-lambda-honojs-${Environment}"
-      RetentionInDays: !If [IsProd, 30, 7]  # Más retención en prod
 
-  # CloudWatch Log Group para API Gateway (opcional)
-  ApiGatewayLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/apigateway/aws-lambda-honojs-${Environment}"
-      RetentionInDays: !If [IsProd, 30, 7]
 
 # Outputs actualizados
 Outputs:
