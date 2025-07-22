@@ -44,7 +44,7 @@ jobs:
           fi
           
           echo "ENVIRONMENT=${ENVIRONMENT}" >> $GITHUB_ENV
-          echo "STACK_NAME=t1-nodejs-ordersv2-${ENVIRONMENT}" >> $GITHUB_ENV
+          echo "STACK_NAME=aws-lambda-honojs-${ENVIRONMENT}" >> $GITHUB_ENV
           echo "🚀 Deploying to ${ENVIRONMENT} environment"
 
       - name: Setup Python for SAM CLI
@@ -103,7 +103,7 @@ jobs:
           [default.deploy.parameters]
           stack_name = "${{ env.STACK_NAME }}"
           resolve_s3 = true
-          s3_prefix = "t1-nodejs-ordersv2"
+          s3_prefix = "${{ env.STACK_NAME }}"
           region = "${{ env.AWS_REGION }}"
           confirm_changeset = false
           capabilities = "CAPABILITY_IAM"
