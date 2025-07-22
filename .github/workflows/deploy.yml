@@ -83,6 +83,10 @@ jobs:
             echo "ℹ️ Stack does not exist - will create new stack"
           fi
 
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Build with esbuild
         run: |
           echo "📦 Building with esbuild..."
