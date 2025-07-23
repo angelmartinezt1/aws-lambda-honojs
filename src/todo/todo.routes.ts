@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
-import * as service from './todo.service.js'
+import { connectToDatabase } from '../config/mongo.js'
 import { apiResponse } from '../utils/response.js'
+import * as service from './todo.service.js'
 
 const todoRoutes = new Hono()
 
@@ -19,6 +20,17 @@ todoRoutes.get('/', async (c) => {
       totalPages: 1
     }
   }))
+})
+
+todoRoutes.get('/db-ping', async (c) => {
+  try {
+    const db = await connectToDatabase()
+    const result = await db.admin().ping()
+    return c.json({ ok: true, result })
+  } catch (err) {
+    console.error(err)
+    return c.json({ ok: false, error: err.message }, 500)
+  }
 })
 
 todoRoutes.get('/:id', async (c) => {
