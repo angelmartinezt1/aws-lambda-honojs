@@ -29,7 +29,8 @@ todoRoutes.get('/db-ping', async (c) => {
     return c.json({ ok: true, result })
   } catch (err) {
     console.error(err)
-    return c.json({ ok: false, error: err.message }, 500)
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    return c.json({ ok: false, error: errorMessage }, 500)
   }
 })
 
