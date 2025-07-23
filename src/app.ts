@@ -10,7 +10,7 @@ app.use(logger())
 app.use('*', cors(corsConfig))
 app.route('/todo', todoRoutes)
 app.get('/', (c) => {
-  return c.json('Hello Hono! Local')
+  return c.json('Hello Hono! Github Actions CI/CD with AWS Lambda')
 })
 
 export default app
