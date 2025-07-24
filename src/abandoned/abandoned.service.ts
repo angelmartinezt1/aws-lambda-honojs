@@ -860,8 +860,10 @@ async function processFlatBatchMetrics (
       const totalAmount = newCarts.reduce((sum, cart) => sum + cart.totalAmount, 0)
       const cartCount = newCarts.length
 
+      const finalRoundedAmount = Math.round(totalAmount * 100) / 100
+
       // ✅ Llamar directamente al repository con datos agregados
-      await repo.incrementBatchMetrics(sellerId, date, cartCount, totalAmount)
+      await repo.incrementBatchMetrics(sellerId, date, cartCount, finalRoundedAmount)
 
       console.log(`✅ Processed ${cartCount} NEW cart metrics for seller ${sellerId} in single operation`)
     } catch (error) {
