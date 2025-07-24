@@ -812,7 +812,7 @@ async function processFlatSellerCarts (
 
   try {
     // Procesar en micro-batches
-    const microBatchSize = 50
+    const microBatchSize = 500
     const microBatches = chunkArray(carts, microBatchSize)
 
     for (const microBatch of microBatches) {
@@ -841,6 +841,35 @@ async function processFlatSellerCarts (
  * Procesa métricas para la estructura flat
  */
 async function processFlatBatchMetrics (
+  sellerResults: Array<{
+    sellerId: number
+    newCarts: any[]
+  }>,
+  timestamp: string
+): Promise<void> {
+  const date = generateDateKey(timestamp)
+
+  for (const { sellerId, newCarts } of sellerResults) {
+    if (newCarts.length === 0) {
+      console.log(`⏭️ No new carts for seller ${sellerId}, skipping metrics`)
+      continue
+    }
+
+    try {
+      // ✅ CAMBIO: Una sola métrica agregada en lugar de 500 individuales
+      const totalAmount = newCarts.reduce((sum, cart) => sum + cart.totalAmount, 0)
+      const cartCount = newCarts.length
+
+      // ✅ Llamar directamente al repository con datos agregados
+      await repo.incrementBatchMetrics(sellerId, date, cartCount, totalAmount)
+
+      console.log(`✅ Processed ${cartCount} NEW cart metrics for seller ${sellerId} in single operation`)
+    } catch (error) {
+      console.error(`❌ Error processing metrics for seller ${sellerId}:`, error)
+    }
+  }
+}
+async function processFlatBatchMetrics2 (
   sellerResults: Array<{
     sellerId: number
     newCarts: any[] // ✅ Solo los carritos nuevos

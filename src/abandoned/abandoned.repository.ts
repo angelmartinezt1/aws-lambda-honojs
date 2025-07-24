@@ -242,3 +242,27 @@ export async function executeBulkWrite (operations: any[]) {
     writeConcern: { w: 1, j: false } // Más rápido para batch
   })
 }
+
+export async function incrementBatchMetrics (
+  sellerId: number,
+  date: string,
+  cartCount: number,
+  totalAmount: number
+): Promise<void> {
+  const db = await connectToDatabase()
+
+  await db.collection(METRICS_COLLECTION).updateOne(
+    { sellerId, date },
+    {
+      $inc: {
+        'cart.abandoned': cartCount,           // ✅ Incrementar por el total
+        'cart.abandonedAmount': totalAmount,   // ✅ Sumar todos los montos
+        'totals.totalAbandonedAmount': totalAmount
+      },
+      $set: {
+        lastUpdatedAt: new Date()
+      }
+    },
+    { upsert: true }
+  )
+}
