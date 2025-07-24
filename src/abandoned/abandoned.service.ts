@@ -820,19 +820,22 @@ async function processFlatBatchMetrics (
 ): Promise<void> {
   const date = generateDateKey(timestamp)
 
-  // ✅ Crear métricas por seller
   for (const [sellerIdStr, carts] of Object.entries(cartsBySeller)) {
     const sellerId = Number(sellerIdStr)
     const totalAmount = carts.reduce((sum, cart) => sum + cart.totalAmount, 0)
+    const cartCount = carts.length
 
-    metricsBatch.addMetric({
-      sellerId,
-      date,
-      type: 'abandonment',
-      category: 'cart',
-      amount: totalAmount,
-      count: carts.length
-    })
+    // ✅ Crear una métrica que represente TODOS los carritos del seller
+    // Pero con el amount total y que el batch processor maneje el count
+    for (let i = 0; i < cartCount; i++) {
+      metricsBatch.addMetric({
+        sellerId,
+        date,
+        type: 'abandonment',
+        category: 'cart',
+        amount: carts[i].totalAmount
+      })
+    }
   }
 }
 
