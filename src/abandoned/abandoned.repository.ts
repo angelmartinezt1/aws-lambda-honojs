@@ -146,3 +146,8 @@ export async function hasEventByCheckoutUlid (checkoutUlid: string, eventType: s
   })
   return !!doc
 }
+
+export async function findSessionByCheckoutUlid (checkoutUlid: string) {
+  const db = await connectToDatabase()
+  return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.checkoutUlid': checkoutUlid })
+}

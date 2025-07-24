@@ -107,19 +107,57 @@ export async function handleUpdateCartAbandoned (sellerId: number, cartId: strin
 //
 // 3. Crear checkout abandonado (guest user)
 //
-export async function handleCreateCheckoutAbandoned (sellerId: number, payload: CheckoutAbandonedPayload) {
+export async function handleCreateCheckoutAbandoned (
+  sellerId: number,
+  payload: CreateCheckoutAbandonedPayload
+) {
+  const { checkoutUlid, cartId } = payload.identifiers
+  const now = new Date(payload.event.timestamp)
+
+  const existing = await repo.findSessionByCheckoutUlid(checkoutUlid)
+
+  if (existing) {
+    // ✅ Ya existe → actualizar productos (si vienen) y agregar evento
+    const updates: Partial<AbandonedSession> = {
+      updatedAt: now
+    }
+
+    if (payload.products && payload.products.length > 0) {
+      updates.products = payload.products
+      updates.productsCount = payload.products.length
+      updates.totalAmount = payload.totalAmount
+    }
+
+    if (cartId) updates.identifiers = { ...existing.identifiers, cartId }
+
+    await repo.updateSessionByCheckoutUlid(checkoutUlid, updates)
+    await repo.appendEventByCheckoutUlid(checkoutUlid, payload.event)
+
+    return {
+      message: 'Checkout session updated (already existed)',
+      checkoutUlid,
+      alreadyExists: true
+    }
+  }
+
+  // ✅ Nueva sesión
   const session: AbandonedSession = {
     sellerId,
     sessionType: payload.sessionType,
     platform: payload.platform,
     email: payload.customerInfo.email,
-    customerInfo: payload.customerInfo,
-    identifiers: {
-      cartId: null,
-      checkoutUlid: payload.identifiers.checkoutUlid
+    customerInfo: {
+      type: payload.customerInfo.type,
+      email: payload.customerInfo.email,
+      fullName: payload.customerInfo.fullName ?? '',
+      marketing: payload.customerInfo.marketing ?? {}
     },
-    products: [],
-    productsCount: 0,
+    identifiers: {
+      cartId: cartId ?? null,
+      checkoutUlid
+    },
+    products: payload.products ?? [],
+    productsCount: payload.products?.length ?? 0,
     totalAmount: payload.totalAmount,
     currency: payload.currency,
     status: {
@@ -128,15 +166,18 @@ export async function handleCreateCheckoutAbandoned (sellerId: number, payload: 
     },
     events: [payload.event],
     date: generateDateKey(payload.event.timestamp),
-    createdAt: new Date(payload.event.timestamp),
-    updatedAt: new Date(payload.event.timestamp),
-    checkoutUpdatedAt: new Date(payload.event.timestamp)
+    createdAt: now,
+    updatedAt: now
   }
 
   await repo.insertSession(session)
   await repo.incrementMetricForAbandonment(sellerId, session, 'checkout')
 
-  return { checkoutUlid: payload.identifiers.checkoutUlid }
+  return {
+    message: 'New checkout session created',
+    checkoutUlid,
+    alreadyExists: false
+  }
 }
 
 //
