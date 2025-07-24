@@ -1,0 +1,112 @@
+{
+  "_id": "ObjectId('...')",
+
+  "sellerId": 12028,            // multitenant
+  "sessionId": "sess_guest_456",    // para usuarios anónimos
+  "userId": 123456,          // null si anónimo
+
+  "email": "user@example.com",      // requerido para recuperación
+
+  "sessionType": "CART_ORIGINATED", // "CART_ORIGINATED" | "CHECKOUT_DIRECT"
+
+  "status": {
+    "cart": "ACTIVE",               // ACTIVE | ABANDONED | RECOVERED | null
+    "checkout": "STARTED"           // STARTED | ABANDONED | PAID | RECOVERED | null
+  },
+
+  "platform": "T1_STORE",
+
+  "identifiers": {
+    "cartId": "cart_ulid_01H8QZ9X5M7K3N2P1Q4R6S8T0V",     // ULID único del carrito
+    "checkoutUlid": "checkout_01H8QZA2B4C6D8E0F2G4H6J8K0",  // ULID del proceso de checkout
+  },
+
+  "customerInfo": {
+    "email": "user@example.com",
+    "phone": "+1234567890",                    // número de teléfono (opcional)
+    "fullName": "Juan Pérez",
+    "type": "registered",                // registered | guest
+    
+    // Información de marketing y comunicaciones
+    "marketing": {
+      "email": {
+        "subscribed": true                    // suscrito a emails de marketing
+      },
+      "sms": {
+        "subscribed": false                   // suscrito a SMS de marketing
+      }
+    }
+  },
+
+  "products": [                     // productos en carrito o checkout
+    {
+      "productId": "687343d22f4ea235a5e43a05",
+      "idT1": "prod_001",
+      "sku": "SKU12345",
+      "uniqueId": 6010121,
+      "childUniqueId": 601212131,
+      "name": "Vestido Negro",
+      "quantity": 2,
+      "unitPrice": 150.00,
+      "totalPrice": 300.00,
+      "imageUrl": "https://example.com/images/prod_001.jpg",
+      "collection": "Demo",
+      "attributes": {"color": "azul", "tejido": "algodón"},
+      "addedAt": "2025-07-18T10:00:00Z"
+    }
+  ],
+  "productsCount": 2,               // total de productos únicos en carrito
+  "totalAmount": 300.00,
+  "currency": "MXN",
+
+  "events": [                       // histórico automático
+    {
+      "type": "CART_UPDATED",
+      "timestamp": "2025-07-18T10:00:00Z",
+      "details": { "action": "add_product", "productId": "prod_001" }
+    },
+    {
+      "type": "CART_ABANDONED",
+      "timestamp": "2025-07-18T12:00:00Z",
+      "details": { "reason": "timeout", "duration": 7200 }
+    },
+    {
+      "type": "EMAIL_SENT",
+      "timestamp": "2025-07-18T12:15:00Z",
+      "details": { "template": "cart_recovery_v1" }
+    }
+  ],
+
+  "emailStats": {
+    "cartAbandoned": {
+      "sent": true,
+      "timestamp": "2025-07-18T12:15:00Z",
+      "emailId": "email_123"
+    },
+    "checkoutAbandoned": {
+      "sent": false
+    },
+    "totalSent": 1,
+    "lastSentAt": "2025-07-18T12:15:00Z"
+  },
+
+  "attempts": {
+    "recovery": 1,
+    "checkout": 1
+  },
+
+  "metadata": {
+    "device": "mobile",
+    "browser": "Chrome",
+    "source": "organic",
+    "campaign": "summer_sale",
+    "ip": "192.168.1.1",
+    "userAgent": "Mozilla/5.0..."
+  },
+
+  "date": "2025-07-23",               // clave para segmentar métricas por día
+  "createdAt": "2025-07-18T10:00:00Z",
+  "cartUpdatedAt": "2025-07-18T10:30:00Z",
+  "checkoutUpdatedAt": null,
+  "updatedAt": "2025-07-18T12:15:00Z"
+}

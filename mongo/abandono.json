@@ -1,0 +1,502 @@
+{
+  "_id": "session_abc123456789",
+  
+  // === IDENTIFICACIÓN DE SESIÓN ===
+  "userId": "user_xyz789",              // String | null (null para anónimos)
+  "sessionId": "sess_guest_456789",     // String | null (para anónimos)
+  "portalId": "shop001",                // String (multitienda)
+  "email": "user@example.com",          // String (requerido para recuperación)
+  
+  // === TIPO DE SESIÓN ===
+  "sessionType": "CART_ORIGINATED",     // "CART_ORIGINATED" | "CHECKOUT_DIRECT"
+  "userType": "registered",             // "registered" | "anonymous"
+  
+  // === ESTADOS INDEPENDIENTES ===
+  "status": {
+    "cart": "RECOVERED",                // "ACTIVE" | "ABANDONED" | "RECOVERED" | null
+    "checkout": "ABANDONED"             // "STARTED" | "ABANDONED" | "PAID" | "RECOVERED" | null
+  },
+  
+  // === PRODUCTOS Y VALORES ===
+  "products": [
+    {
+      "productId": "prod_001",
+      "name": "Vestido Negro Elegante",
+      "description": "Vestido de noche elegante en color negro",
+      "price": 150.00,
+      "originalPrice": 180.00,         // Precio antes de descuentos
+      "quantity": 2,
+      "sku": "VN001-M-BLACK",
+      "size": "M",
+      "color": "Negro",
+      "image": "https://cdn.example.com/products/vestido-negro.jpg",
+      "thumbnail": "https://cdn.example.com/products/thumbs/vestido-negro-thumb.jpg",
+      "category": "Vestidos",
+      "categoryId": "cat_vestidos",
+      "brand": "Elegant Fashion",
+      "brandId": "brand_elegant",
+      "weight": 0.5,                   // kg
+      "dimensions": {
+        "length": 120,                 // cm
+        "width": 60,
+        "height": 2
+      },
+      "addedAt": "2025-07-18T10:00:00Z",
+      "updatedAt": "2025-07-18T10:15:00Z",
+      "stock": 15,                     // Stock disponible al momento
+      "isAvailable": true,
+      "discountPercentage": 16.67,
+      "tags": ["elegante", "noche", "formal"],
+      "attributes": {
+        "material": "Seda",
+        "cuidado": "Lavado en seco",
+        "temporada": "Todas"
+      }
+    },
+    {
+      "productId": "prod_002", 
+      "name": "Zapatos Rojos de Tacón",
+      "description": "Zapatos rojos con tacón alto para ocasiones especiales",
+      "price": 120.00,
+      "originalPrice": 120.00,
+      "quantity": 1,
+      "sku": "ZR002-38-RED",
+      "size": "38",
+      "color": "Rojo",
+      "image": "https://cdn.example.com/products/zapatos-rojos.jpg",
+      "thumbnail": "https://cdn.example.com/products/thumbs/zapatos-rojos-thumb.jpg",
+      "category": "Zapatos",
+      "categoryId": "cat_zapatos",
+      "brand": "Step Style",
+      "brandId": "brand_step",
+      "weight": 0.8,
+      "dimensions": {
+        "length": 25,
+        "width": 10,
+        "height": 12
+      },
+      "addedAt": "2025-07-18T10:30:00Z",
+      "updatedAt": "2025-07-18T10:30:00Z",
+      "stock": 8,
+      "isAvailable": true,
+      "discountPercentage": 0,
+      "tags": ["tacón", "elegante", "rojo"],
+      "attributes": {
+        "material": "Cuero",
+        "tacón": "10cm",
+        "suela": "Antideslizante"
+      }
+    }
+  ],
+  
+  // === CÁLCULOS DE PRECIO ===
+  "pricing": {
+    "subtotal": 420.00,                // Suma de productos sin descuentos
+    "discountAmount": 50.00,           // Total de descuentos aplicados
+    "subtotalWithDiscount": 370.00,    // Subtotal después de descuentos
+    "taxAmount": 59.20,                // Impuestos (16% IVA)
+    "taxRate": 0.16,
+    "shippingCost": 0.00,              // Envío gratuito
+    "totalAmount": 429.20,             // Total final
+    "currency": "USD",
+    "exchangeRate": 1.0,               // Si hay conversión de moneda
+    "originalCurrency": "USD"
+  },
+  
+  // === DESCUENTOS Y PROMOCIONES ===
+  "discounts": [
+    {
+      "type": "COUPON",
+      "code": "SUMMER25",
+      "name": "Descuento de Verano 25%",
+      "amount": 30.00,
+      "percentage": 10.0,
+      "appliedAt": "2025-07-18T10:45:00Z",
+      "appliedTo": ["prod_001"]         // IDs de productos afectados
+    },
+    {
+      "type": "PROMOTION",
+      "code": "FREE_SHIPPING",
+      "name": "Envío Gratuito",
+      "amount": 20.00,
+      "percentage": 0,
+      "appliedAt": "2025-07-18T10:45:00Z",
+      "appliedTo": "shipping"
+    }
+  ],
+  
+  // === HISTORIAL COMPLETO DE EVENTOS ===
+  "events": [
+    {
+      "type": "CART_CREATED",
+      "timestamp": "2025-07-18T10:00:00Z",
+      "data": {
+        "source": "website",
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)",
+        "ip": "192.168.1.100"
+      }
+    },
+    {
+      "type": "CART_UPDATED",
+      "timestamp": "2025-07-18T10:15:00Z",
+      "data": {
+        "action": "add_product",
+        "productId": "prod_001",
+        "quantity": 2,
+        "previousTotal": 0,
+        "newTotal": 300.00
+      }
+    },
+    {
+      "type": "CART_UPDATED",
+      "timestamp": "2025-07-18T10:30:00Z",
+      "data": {
+        "action": "add_product",
+        "productId": "prod_002",
+        "quantity": 1,
+        "previousTotal": 300.00,
+        "newTotal": 420.00
+      }
+    },
+    {
+      "type": "COUPON_APPLIED",
+      "timestamp": "2025-07-18T10:45:00Z",
+      "data": {
+        "couponCode": "SUMMER25",
+        "discountAmount": 30.00,
+        "previousTotal": 420.00,
+        "newTotal": 390.00
+      }
+    },
+    {
+      "type": "CART_ABANDONED",
+      "timestamp": "2025-07-18T12:45:00Z",
+      "data": {
+        "reason": "timeout",
+        "duration": 7200,               // segundos de inactividad
+        "lastActivity": "2025-07-18T10:45:00Z",
+        "pageUrl": "/cart",
+        "triggeredBy": "system_job"
+      }
+    },
+    {
+      "type": "EMAIL_SENT",
+      "timestamp": "2025-07-18T13:00:00Z",
+      "data": {
+        "emailType": "cart_abandoned",
+        "emailId": "email_123456",
+        "template": "cart_abandonment_v2",
+        "recipient": "user@example.com",
+        "subject": "¡No olvides tu carrito!",
+        "scheduled": false
+      }
+    },
+    {
+      "type": "EMAIL_OPENED",
+      "timestamp": "2025-07-18T13:15:00Z",
+      "data": {
+        "emailId": "email_123456",
+        "userAgent": "Mail/iOS",
+        "ip": "192.168.1.100"
+      }
+    },
+    {
+      "type": "EMAIL_CLICKED",
+      "timestamp": "2025-07-18T13:20:00Z",
+      "data": {
+        "emailId": "email_123456",
+        "linkClicked": "recovery_link",
+        "destinationUrl": "/cart/recover?token=abc123"
+      }
+    },
+    {
+      "type": "CART_RECOVERED",
+      "timestamp": "2025-07-18T13:25:00Z",
+      "data": {
+        "source": "email_click",
+        "emailId": "email_123456",
+        "recoveryToken": "recovery_token_abc123",
+        "pageUrl": "/cart",
+        "userAgent": "Mozilla/5.0..."
+      }
+    },
+    {
+      "type": "CHECKOUT_STARTED",
+      "timestamp": "2025-07-18T13:30:00Z",
+      "data": {
+        "source": "from_cart",
+        "checkoutId": "checkout_def456",
+        "paymentMethod": null,
+        "pageUrl": "/checkout",
+        "previousCartStatus": "RECOVERED"
+      }
+    },
+    {
+      "type": "SHIPPING_INFO_ADDED",
+      "timestamp": "2025-07-18T13:32:00Z",
+      "data": {
+        "shippingMethod": "standard",
+        "estimatedDelivery": "2025-07-22",
+        "shippingCost": 0.00
+      }
+    },
+    {
+      "type": "PAYMENT_METHOD_SELECTED",
+      "timestamp": "2025-07-18T13:35:00Z",
+      "data": {
+        "paymentMethod": "credit_card",
+        "provider": "stripe",
+        "last4": "1234"
+      }
+    },
+    {
+      "type": "CHECKOUT_ABANDONED",
+      "timestamp": "2025-07-18T13:45:00Z",
+      "data": {
+        "reason": "timeout",
+        "duration": 900,                // 15 minutos
+        "step": "payment_review",       // Último paso completado
+        "lastActivity": "2025-07-18T13:35:00Z",
+        "triggeredBy": "system_job"
+      }
+    },
+    {
+      "type": "EMAIL_SENT",
+      "timestamp": "2025-07-18T14:00:00Z",
+      "data": {
+        "emailType": "checkout_abandoned",
+        "emailId": "email_789012",
+        "template": "checkout_abandonment_v1",
+        "recipient": "user@example.com",
+        "subject": "¡Completa tu compra!",
+        "urgency": "high"
+      }
+    }
+  ],
+  
+  // === CONTROL DE EMAILS ===
+  "emailSent": {
+    "cartAbandoned": {
+      "sent": true,
+      "timestamp": "2025-07-18T13:00:00Z",
+      "emailId": "email_123456",
+      "opened": true,
+      "openedAt": "2025-07-18T13:15:00Z",
+      "clicked": true,
+      "clickedAt": "2025-07-18T13:20:00Z",
+      "converted": true,              // Si llevó a recuperación
+      "convertedAt": "2025-07-18T13:25:00Z"
+    },
+    "checkoutAbandoned": {
+      "sent": true,
+      "timestamp": "2025-07-18T14:00:00Z",
+      "emailId": "email_789012",
+      "opened": false,
+      "clicked": false,
+      "converted": false
+    },
+    "totalEmailsSent": 2,
+    "lastEmailSent": "2025-07-18T14:00:00Z",
+    "lastEmailType": "checkout_abandoned",
+    "emailsThisMonth": 2,
+    "canSendMore": true                // Basado en límites de frecuencia
+  },
+  
+  // === INFORMACIÓN DE CONTACTO ===
+  "contactInfo": {
+    "email": "user@example.com",
+    "emailValidated": true,
+    "emailValidatedAt": "2025-07-15T09:00:00Z",
+    "phone": "+52 55 1132 7080",
+    "phoneValidated": false,
+    "consentGiven": true,              // Para emails de marketing
+    "consentGivenAt": "2025-07-18T10:00:00Z",
+    "consentSource": "checkout_form",  // Dónde dio consentimiento
+    "preferredLanguage": "es",
+    "timezone": "America/Mexico_City"
+  },
+  
+  // === INFORMACIÓN DE ENVÍO ===
+  "shippingInfo": {
+    "address": {
+      "firstName": "Juan",
+      "lastName": "Pérez",
+      "company": "",
+      "addressLine1": "Av. Reforma 123",
+      "addressLine2": "Piso 4, Depto 401",
+      "city": "Ciudad de México",
+      "state": "CDMX", 
+      "postalCode": "06600",
+      "country": "MX",
+      "countryCode": "MX"
+    },
+    "method": {
+      "id": "standard",
+      "name": "Envío Estándar",
+      "cost": 0.00,
+      "estimatedDays": 3,
+      "estimatedDelivery": "2025-07-22",
+      "carrier": "DHL",
+      "trackingAvailable": true
+    },
+    "instructions": "Dejar con portero si no estoy"
+  },
+  
+  // === INFORMACIÓN DE FACTURACIÓN ===
+  "billingInfo": {
+    "address": {
+      "firstName": "Juan",
+      "lastName": "Pérez", 
+      "company": "Empresa S.A. de C.V.",
+      "addressLine1": "Av. Reforma 123",
+      "addressLine2": "Piso 4, Depto 401",
+      "city": "Ciudad de México",
+      "state": "CDMX",
+      "postalCode": "06600",
+      "country": "MX",
+      "countryCode": "MX"
+    },
+    "taxInfo": {
+      "rfc": "PERJ850101ABC",           // RFC para México
+      "businessName": "Juan Pérez",
+      "requestInvoice": false
+    }
+  },
+  
+  // === INFORMACIÓN DE PAGO ===
+  "paymentInfo": {
+    "method": "credit_card",
+    "provider": "stripe",
+    "paymentIntentId": "pi_1234567890",
+    "last4": "1234",
+    "cardBrand": "visa",
+    "expiryMonth": 12,
+    "expiryYear": 2027,
+    "holderName": "Juan Perez",
+    "billingPostalCode": "06600",
+    "installments": 1,
+    "processingFee": 15.75,
+    "status": "pending"               // "pending" | "processing" | "completed" | "failed"
+  },
+  
+  // === CONTADORES Y ESTADÍSTICAS ===
+  "statistics": {
+    "recoveryAttempts": 1,            // Intentos de recuperación
+    "checkoutAttempts": 1,            // Intentos de checkout
+    "emailsSent": 2,
+    "emailsOpened": 1,
+    "emailsClicked": 1,
+    "pageViews": 15,                  // Vistas de página en la sesión
+    "timeOnSite": 2100,              // Tiempo total en segundos
+    "cartUpdates": 3,                // Veces que modificó carrito
+    "abandonmentCount": 2,           // Veces que abandonó (carrito + checkout)
+    "conversionSource": "email_recovery" // Cómo llegó a la conversión final
+  },
+  
+  // === INFORMACIÓN DE DISPOSITIVO Y CONTEXTO ===
+  "deviceInfo": {
+    "type": "mobile",                // "desktop" | "mobile" | "tablet"
+    "os": "iOS",
+    "osVersion": "15.0",
+    "browser": "Safari",
+    "browserVersion": "15.0",
+    "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
+    "screenResolution": "375x812",
+    "language": "es-MX",
+    "timezoneName": "America/Mexico_City",
+    "timezoneOffset": -360
+  },
+  
+  // === DATOS DE TRÁFICO ===
+  "trafficInfo": {
+    "source": "organic",             // "organic" | "paid" | "social" | "email" | "direct"
+    "medium": "search",              // "search" | "social" | "email" | "referral"
+    "campaign": "summer_sale_2025",
+    "keyword": "vestidos elegantes",
+    "referrer": "https://google.com",
+    "landingPage": "/products/vestidos",
+    "utmSource": "google",
+    "utmMedium": "organic",
+    "utmCampaign": null,
+    "utmContent": null,
+    "utmTerm": "vestidos elegantes"
+  },
+  
+  // === GEOLOCALIZACIÓN ===
+  "location": {
+    "ip": "192.168.1.100",
+    "country": "Mexico",
+    "countryCode": "MX",
+    "region": "Ciudad de México",
+    "regionCode": "CDMX", 
+    "city": "Mexico City",
+    "latitude": 19.4326,
+    "longitude": -99.1332,
+    "timezone": "America/Mexico_City",
+    "isp": "Telmex",
+    "vpnDetected": false
+  },
+  
+  // === DATOS DE COMPORTAMIENTO ===
+  "behaviorData": {
+    "pagesVisited": [
+      {
+        "url": "/",
+        "timestamp": "2025-07-18T09:45:00Z",
+        "timeSpent": 120
+      },
+      {
+        "url": "/products/vestidos",
+        "timestamp": "2025-07-18T09:47:00Z", 
+        "timeSpent": 300
+      },
+      {
+        "url": "/product/vestido-negro-elegante",
+        "timestamp": "2025-07-18T09:52:00Z",
+        "timeSpent": 180
+      },
+      {
+        "url": "/cart",
+        "timestamp": "2025-07-18T10:00:00Z",
+        "timeSpent": 45
+      }
+    ],
+    "searchQueries": ["vestidos", "zapatos rojos"],
+    "filtersUsed": ["color:negro", "talla:M", "precio:100-200"],
+    "productsViewed": 8,
+    "categoriesViewed": ["Vestidos", "Zapatos", "Accesorios"],
+    "wishlistItems": 2,
+    "reviewsRead": 3,
+    "chatInteractions": 0
+  },
+  
+  // === CONFIGURACIÓN DE PRIVACIDAD ===
+  "privacy": {
+    "cookiesAccepted": true,
+    "cookiesAcceptedAt": "2025-07-18T09:45:00Z",
+    "analyticsOptOut": false,
+    "marketingOptOut": false,
+    "dataProcessingConsent": true,
+    "dataProcessingConsentAt": "2025-07-18T10:00:00Z",
+    "rightToBeForgettenRequested": false,
+    "dataExportRequested": false
+  },
+  
+  // === METADATOS DEL SISTEMA ===
+  "systemInfo": {
+    "version": "2.1.0",              // Versión del sistema
+    "environment": "production",      // "development" | "staging" | "production"
+    "serverRegion": "us-east-1",
+    "dataCenter": "aws-virginia",
+    "processingTime": 150,           // ms para procesar la sesión
+    "cacheHit": true,                // Si los datos vinieron de cache
+    "lastSyncAt": "2025-07-18T14:00:00Z"
+  },
+  
+  // === TIMESTAMPS PRINCIPALES ===
+  "createdAt": "2025-07-18T10:00:00Z",
+  "cartUpdatedAt": "2025-07-18T13:25:00Z",
+  "checkoutUpdatedAt": "2025-07-18T13:45:00Z", 
+  "updatedAt": "2025-07-18T14:00:00Z",
+  "expiresAt": "2025-10-16T10:00:00Z"  // TTL para limpieza automática (90 días)
+}

@@ -1,0 +1,39 @@
+{
+  "_id": "shop001_2025-07-23",
+  "sellerId": 12028,            // multitenant
+  "date": "2025-07-23",                 // clave para segmentar métricas por día
+
+  "cart": {
+    "active": 120,                     // sesiones activas sin abandonar
+    "abandoned": 45,
+    "recovered": 12,
+    "abandonedAmount": 3250.00,
+    "recoveredAmount": 1050.00
+  },
+
+  "checkout": {
+    "started": 80,
+    "abandoned": 20,
+    "paid": 55,
+    "recovered": 8,                   // usuarios que volvieron al checkout tras abandono
+    "abandonedAmount": 1800.00,
+    "recoveredAmount": 750.00
+  },
+
+  "totals": {
+    "totalAbandonedAmount": 5050.00,   // suma de cart + checkout abandonados
+    "totalRecoveredAmount": 1800.00    // suma de cart + checkout recuperados
+  },
+
+  "eventCounters": {                  // opcional: si quieres trazabilidad por tipo de evento
+    "CART_UPDATED": 340,
+    "CART_ABANDONED": 45,
+    "CART_RECOVERED": 12,
+    "CHECKOUT_STARTED": 80,
+    "CHECKOUT_PAID": 55,
+    "CHECKOUT_ABANDONED": 20,
+    "EMAIL_SENT": 40
+  },
+
+  "lastUpdatedAt": "2025-07-23T18:30:00Z"
+}
