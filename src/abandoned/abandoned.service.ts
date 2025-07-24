@@ -686,6 +686,8 @@ export async function handleFlatBatchAbandonedCarts (
 }> {
   const startTime = Date.now()
 
+  const sellerResults = [] // ✅ Para recopilar resultados con carritos nuevos
+
   console.log(`Processing flat batch ${payload.batchId}`, {
     totalCarts: payload.totalCarts,
     totalSellers: payload.totalSellers
@@ -731,12 +733,23 @@ export async function handleFlatBatchAbandonedCarts (
 
         if (result.status === 'fulfilled') {
           const stats = result.value
-          sellerStats[sellerId] = stats
+          sellerStats[sellerId] = {
+            processed: stats.processed,
+            created: stats.created,
+            updated: stats.updated,
+            errors: stats.errors
+          }
 
           overallStats.totalProcessed += stats.processed
           overallStats.totalCreated += stats.created
           overallStats.totalUpdated += stats.updated
           overallStats.totalErrors += stats.errors
+
+          // ✅ AGREGAR: recopilar para métricas
+          sellerResults.push({
+            sellerId,
+            newCarts: stats.newCarts || [] // ✅ Fallback a array vacío
+          })
         } else {
           console.error(`Failed to process seller ${sellerId}:`, result.reason)
           const sellerCartsCount = cartsBySeller[sellerId].length
@@ -754,7 +767,7 @@ export async function handleFlatBatchAbandonedCarts (
     }
 
     // ✅ Procesar métricas para todos los sellers
-    await processFlatBatchMetrics(cartsBySeller, payload.timestamp)
+    await processFlatBatchMetrics(sellerResults, payload.timestamp)
 
     const executionTime = `${Date.now() - startTime}ms`
 
@@ -780,17 +793,25 @@ export async function handleFlatBatchAbandonedCarts (
 /**
  * Procesa carts de un seller específico
  */
+// ✅ MODIFICAR en abandoned.service.ts
 async function processFlatSellerCarts (
   sellerId: number,
   carts: any[],
   timestamp: string
-): Promise<{ processed: number; created: number; updated: number; errors: number }> {
+): Promise<{
+  processed: number
+  created: number
+  updated: number
+  errors: number
+  newCarts: any[] // ✅ AGREGAR: carritos que fueron creados (no actualizados)
+}> {
   console.log(`Processing seller ${sellerId} with ${carts.length} carts`)
 
   const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
+  const newCarts: any[] = [] // ✅ NUEVO: tracking de carritos nuevos
 
   try {
-    // ✅ Procesar en micro-batches
+    // Procesar en micro-batches
     const microBatchSize = 50
     const microBatches = chunkArray(carts, microBatchSize)
 
@@ -801,13 +822,18 @@ async function processFlatSellerCarts (
       stats.created += microStats.created
       stats.updated += microStats.updated
       stats.errors += microStats.errors
+
+      // ✅ AGREGAR: identificar carritos nuevos basado en el resultado
+      if (microStats.createdCarts) {
+        newCarts.push(...microStats.createdCarts)
+      }
     }
 
-    return stats
+    return { ...stats, newCarts } // ✅ RETORNAR carritos nuevos
   } catch (error) {
     console.error(`Error processing seller ${sellerId}:`, error)
     stats.errors = carts.length
-    return stats
+    return { ...stats, newCarts: [] }
   }
 }
 
@@ -815,26 +841,36 @@ async function processFlatSellerCarts (
  * Procesa métricas para la estructura flat
  */
 async function processFlatBatchMetrics (
-  cartsBySeller: Record<number, any[]>,
+  sellerResults: Array<{
+    sellerId: number
+    newCarts: any[] // ✅ Solo los carritos nuevos
+  }>,
   timestamp: string
 ): Promise<void> {
   const date = generateDateKey(timestamp)
 
-  for (const [sellerIdStr, carts] of Object.entries(cartsBySeller)) {
-    const sellerId = Number(sellerIdStr)
-    const totalAmount = carts.reduce((sum, cart) => sum + cart.totalAmount, 0)
-    const cartCount = carts.length
+  for (const { sellerId, newCarts } of sellerResults) {
+    if (newCarts.length === 0) {
+      console.log(`⏭️ No new carts for seller ${sellerId}, skipping metrics`)
+      continue
+    }
 
-    // ✅ Crear una métrica que represente TODOS los carritos del seller
-    // Pero con el amount total y que el batch processor maneje el count
-    for (let i = 0; i < cartCount; i++) {
-      metricsBatch.addMetric({
-        sellerId,
-        date,
-        type: 'abandonment',
-        category: 'cart',
-        amount: carts[i].totalAmount
-      })
+    try {
+      // ✅ Solo procesar métricas para carritos NUEVOS
+      for (const cart of newCarts) {
+        await repo.incrementMetricForAbandonment(
+          sellerId,
+          {
+            totalAmount: cart.totalAmount,
+            date
+          } as any,
+          'cart'
+        )
+      }
+
+      console.log(`✅ Processed ${newCarts.length} NEW cart metrics for seller ${sellerId}`)
+    } catch (error) {
+      console.error(`❌ Error processing metrics for seller ${sellerId}:`, error)
     }
   }
 }
@@ -853,12 +889,14 @@ function chunkArray<T> (array: T[], size: number): T[][] {
 /**
  * Procesa un micro-batch de carritos (operación atómica)
  */
+// ✅ CORREGIR processMicroBatchCarts - falta declarar createdCarts
 async function processMicroBatchCarts (
   sellerId: number,
   carts: any[],
   timestamp: string
-): Promise<{ processed: number; created: number; updated: number; errors: number }> {
+): Promise<{ processed: number; created: number; updated: number; errors: number; createdCarts?: any[] }> {
   const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
+  const createdCarts: any[] = [] // ✅ AGREGAR esta línea que falta
 
   // Preparar operaciones bulk para MongoDB
   const bulkOps = []
@@ -925,11 +963,21 @@ async function processMicroBatchCarts (
       const result = await repo.executeBulkWrite(bulkOps)
       stats.created = result.upsertedCount
       stats.updated = result.modifiedCount
+
+      // ✅ CORREGIR: identificar carritos nuevos
+      if (result.upsertedIds) {
+        Object.keys(result.upsertedIds).forEach(index => {
+          const cartIndex = parseInt(index)
+          if (carts[cartIndex]) {
+            createdCarts.push(carts[cartIndex])
+          }
+        })
+      }
     } catch (error) {
       console.error('Bulk write error:', error)
       stats.errors += bulkOps.length
     }
   }
 
-  return stats
+  return { ...stats, createdCarts } // ✅ RETORNAR createdCarts
 }
