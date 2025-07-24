@@ -103,10 +103,15 @@ export async function incrementMetricForRecovery (
 
   if (!session) return
 
+  const amount = session.totalAmount
+
   const incFields: Record<string, number> = {
     [`${type}.recovered`]: 1,
-    [`${type}.recoveredAmount`]: session.totalAmount,
-    'totals.totalRecoveredAmount': session.totalAmount
+    [`${type}.recoveredAmount`]: amount,
+    [`${type}.abandoned`]: -1,
+    [`${type}.abandonedAmount`]: -amount,
+    'totals.totalRecoveredAmount': amount,
+    'totals.totalAbandonedAmount': -amount
   }
 
   return db.collection(METRICS_COLLECTION).updateOne(
@@ -128,6 +133,15 @@ export async function hasEventByCartId (cartId: string, eventType: string): Prom
   const db = await connectToDatabase()
   const doc = await db.collection(SESSION_COLLECTION).findOne({
     'identifiers.cartId': cartId,
+    'events.type': eventType
+  })
+  return !!doc
+}
+
+export async function hasEventByCheckoutUlid (checkoutUlid: string, eventType: string): Promise<boolean> {
+  const db = await connectToDatabase()
+  const doc = await db.collection(SESSION_COLLECTION).findOne({
+    'identifiers.checkoutUlid': checkoutUlid,
     'events.type': eventType
   })
   return !!doc

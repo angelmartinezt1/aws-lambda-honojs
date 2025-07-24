@@ -4,6 +4,10 @@ import * as repo from './abandoned.repository.js'
 import { CheckoutAbandonedPayload, CreateCartAbandonedPayload, MarkAsRecoveredPayload, UpdateCartPayload } from './abandoned.types.js'
 
 //
+// 5. Marcar sesión como recuperada
+//
+
+//
 // 1. Crear carrito abandonado
 //
 export async function handleCreateCartAbandoned (
@@ -148,26 +152,53 @@ export async function handleUpdateCheckoutAbandoned (sellerId: number, checkoutU
   return { checkoutUlid }
 }
 
-//
-// 5. Marcar sesión como recuperada
-//
-export async function handleMarkAsRecovered (sellerId: number, payload: MarkAsRecoveredPayload) {
-  const now = new Date(payload.event.timestamp)
-  if (payload.type === 'cart') {
-    await repo.updateSessionByCartId(payload.id, {
-      'status.cart': 'RECOVERED',
-      updatedAt: now
-    })
-    await repo.appendEventByCartId(payload.id, payload.event)
-    await repo.incrementMetricForRecovery(sellerId, 'cart', payload.id)
-  } else {
-    await repo.updateSessionByCheckoutUlid(payload.id, {
-      'status.checkout': 'RECOVERED',
-      updatedAt: now
-    })
-    await repo.appendEventByCheckoutUlid(payload.id, payload.event)
-    await repo.incrementMetricForRecovery(sellerId, 'checkout', payload.id)
+export async function handleMarkAsRecovered (
+  sellerId: number,
+  payload: MarkAsRecoveredPayload
+) {
+  const { type, id, event } = payload
+  const now = new Date(event.timestamp)
+
+  const isCart = type === 'cart'
+  const queryField = isCart ? 'cartId' : 'checkoutUlid'
+  const statusField = isCart ? 'status.cart' : 'status.checkout'
+
+  // 1. Verifica si ya existe el evento de recuperación
+  const alreadyHasEvent = isCart
+    ? await repo.hasEventByCartId(id, event.type)
+    : await repo.hasEventByCheckoutUlid(id, event.type)
+
+  // 2. Si ya existe, no hagas nada más
+  if (alreadyHasEvent) {
+    return {
+      message: 'Already recovered — event already exists',
+      id,
+      alreadyRecovered: true
+    }
   }
 
-  return { id: payload.id, recovered: true }
+  // 3. Actualizar el status a RECOVERED
+  const updateFields: Record<string, any> = {
+    [statusField]: 'RECOVERED',
+    updatedAt: now
+  }
+
+  if (isCart) {
+    updateFields.cartUpdatedAt = now
+    await repo.updateSessionByCartId(id, updateFields)
+    await repo.appendEventByCartId(id, event)
+  } else {
+    updateFields.checkoutUpdatedAt = now
+    await repo.updateSessionByCheckoutUlid(id, updateFields)
+    await repo.appendEventByCheckoutUlid(id, event)
+  }
+
+  // 4. Incrementar la métrica solo una vez
+  await repo.incrementMetricForRecovery(sellerId, type, id)
+
+  return {
+    message: 'Session marked as recovered',
+    id,
+    recovered: true
+  }
 }
