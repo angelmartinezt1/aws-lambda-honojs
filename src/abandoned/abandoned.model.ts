@@ -2,46 +2,46 @@ import { ObjectId } from 'mongodb'
 
 export interface AbandonedSession {
   _id?: string | ObjectId
-  sellerId: number
-  sessionId?: string
-  userId?: number
+  seller_id: number
+  session_id?: string
+  user_id?: number
   email: string
-  sessionType: 'CART_ORIGINATED' | 'CHECKOUT_DIRECT'
+  session_type: 'CART_ORIGINATED' | 'CHECKOUT_DIRECT'
   platform: string
   identifiers: {
-    cartId?: string | null
-    checkoutUlid?: string
+    cart_id?: string | null
+    checkout_ulid?: string
   }
-  customerInfo: {
+  customer_info: {
     type: 'registered' | 'guest'
     email: string
     phone?: string
-    fullName?: string
+    full_name?: string
     marketing?: {
       email?: { subscribed: boolean }
       sms?: { subscribed: boolean }
     }
   }
   products?: ProductItem[]
-  productsCount?: number
-  totalAmount: number
+  products_count?: number
+  total_amount: number
   currency: string
   status: {
     cart?: 'ACTIVE' | 'ABANDONED' | 'RECOVERED' | null
     checkout?: 'STARTED' | 'ABANDONED' | 'PAID' | 'RECOVERED' | null
   }
   events: AbandonedEvent[]
-  emailStats?: any
+  email_stats?: any
   attempts?: {
     recovery?: number
     checkout?: number
   }
   metadata?: any
   date: string
-  createdAt?: Date
-  updatedAt?: Date
-  cartUpdatedAt?: Date
-  checkoutUpdatedAt?: Date
+  created_at?: Date
+  updated_at?: Date
+  cart_updated_at?: Date
+  checkout_updated_at?: Date
 }
 
 export interface AbandonedEvent {
@@ -51,17 +51,17 @@ export interface AbandonedEvent {
 }
 
 export interface ProductItem {
-  productId: string
+  product_id: string
   sku: string
   name: string
   quantity: number
-  unitPrice: number
-  totalPrice: number
-  imageUrl?: string
-  idT1?: string
-  uniqueId?: number
-  childUniqueId?: number
+  unit_price: number
+  total_price: number
+  image_url?: string
+  id_t1?: string
+  unique_id?: number
+  child_unique_id?: number
   collection?: string
   attributes?: Record<string, string>
-  addedAt?: string
+  added_at?: string
 }

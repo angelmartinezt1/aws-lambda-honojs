@@ -1,16 +1,16 @@
 export interface CreateCartAbandonedPayload {
   platform: string
-  sessionType: 'CART_ORIGINATED'
-  customerInfo: {
-    userId: number
+  session_type: 'CART_ORIGINATED'
+  customer_info: {
+    user_id: number
     email: string
-    fullName: string
+    full_name: string
   }
   products: any[]
-  productsCount: number
-  totalAmount: number
+  products_count: number
+  total_amount: number
   currency: string
-  identifiers: { cartId: string }
+  identifiers: { cart_id: string }
   event: {
     type: 'CART_ABANDONED'
     timestamp: string
@@ -20,8 +20,8 @@ export interface CreateCartAbandonedPayload {
 
 export interface UpdateCartPayload {
   products: any[]
-  productsCount: number
-  totalAmount: number
+  products_count: number
+  total_amount: number
   event: {
     type: 'CART_UPDATED'
     timestamp: string
@@ -31,16 +31,16 @@ export interface UpdateCartPayload {
 
 export interface CheckoutAbandonedPayload {
   platform: string
-  sessionType: 'CHECKOUT_DIRECT'
-  customerInfo: {
+  session_type: 'CHECKOUT_DIRECT'
+  customer_info: {
     type: 'guest'
     email: string
   }
-  totalAmount: number
+  total_amount: number
   currency: string
   identifiers: {
-    cartId: null
-    checkoutUlid: string
+    cart_id: null
+    checkout_ulid: string
   }
   event: {
     type: 'CHECKOUT_ABANDONED'
@@ -60,28 +60,28 @@ export interface MarkAsRecoveredPayload {
 }
 
 export interface FlatBatchAbandonedCartsPayload {
-  batchId: string
+  batch_id: string
   timestamp: string
-  totalCarts: number
-  totalSellers: number
+  total_carts: number
+  total_sellers: number
   carts: {
-    sellerId: number              // ✅ Cada cart tiene su sellerId
-    cartId: string
-    userId?: number
+    seller_id: number
+    cart_id: string
+    user_id?: number
     email: string
-    fullName?: string
+    full_name?: string
     phone?: string
     products: any[]
-    totalAmount: number
+    total_amount: number
     currency: string
     platform: string
-    abandonedAt: string
-    lastUpdated: string
-    shippingAddress?: {
+    abandoned_at: string
+    last_updated: string
+    shipping_address?: {
       country: string
       state: string
       city: string
-      zipCode: string
+      zip_code: string
     }
   }[]
 }

@@ -16,33 +16,33 @@ function withTiming<T extends any[]> (
 
     try {
       const response = await handler(...args)
-      const executionTime = `${Date.now() - start}ms`
+      const execution_time = `${Date.now() - start}ms`
 
       // Agregar timing a la respuesta si es exitosa
       if (response.status === 200) {
         const body = await response.json()
         return Response.json({
           ...body,
-          executionTime
+          execution_time
         })
       }
 
       return response
     } catch (error) {
-      const executionTime = `${Date.now() - start}ms`
+      const execution_time = `${Date.now() - start}ms`
       console.error(`Error in ${operation}:`, error)
 
       const message = error instanceof Error ? error.message : 'Unknown error occurred'
-      const statusCode = message.includes('Validation') ? 400 : 500
+      const status_code = message.includes('Validation') ? 400 : 500
 
       return Response.json(
         apiResponse({
           success: false,
           error: message,
           operation,
-          executionTime
+          execution_time
         }),
-        { status: statusCode }
+        { status: status_code }
       )
     }
   }
@@ -50,40 +50,40 @@ function withTiming<T extends any[]> (
 
 export async function createCartAbandoned (c: Context) {
   const start = Date.now()
-  const sellerId = Number(c.req.param('sellerId'))
+  const seller_id = Number(c.req.param('seller_id'))
   const body = await c.req.json()
-  const result = await service.handleCreateCartAbandoned(sellerId, body)
-  const executionTime = `${Date.now() - start}ms`
-  return c.json(apiResponse({ success: true, data: result, executionTime }))
+  const result = await service.handleCreateCartAbandoned(seller_id, body)
+  const execution_time = `${Date.now() - start}ms`
+  return c.json(apiResponse({ success: true, data: result, execution_time }))
 }
 
 export async function updateCartAbandoned (c: Context) {
-  const sellerId = Number(c.req.param('sellerId'))
-  const cartId = c.req.param('cartId')
+  const seller_id = Number(c.req.param('seller_id'))
+  const cart_id = c.req.param('cart_id')
   const body = await c.req.json()
-  const result = await service.handleUpdateCartAbandoned(sellerId, cartId, body)
+  const result = await service.handleUpdateCartAbandoned(seller_id, cart_id, body)
   return c.json(apiResponse({ success: true, data: result }))
 }
 
 export async function createCheckoutAbandoned (c: Context) {
-  const sellerId = Number(c.req.param('sellerId'))
+  const seller_id = Number(c.req.param('seller_id'))
   const body = await c.req.json()
-  const result = await service.handleCreateCheckoutAbandoned(sellerId, body)
+  const result = await service.handleCreateCheckoutAbandoned(seller_id, body)
   return c.json(apiResponse({ success: true, data: result }))
 }
 
 export async function updateCheckoutAbandoned (c: Context) {
-  const sellerId = Number(c.req.param('sellerId'))
-  const checkoutUlid = c.req.param('checkoutUlid')
+  const seller_id = Number(c.req.param('seller_id'))
+  const checkout_ulid = c.req.param('checkout_ulid')
   const body = await c.req.json()
-  const result = await service.handleUpdateCheckoutAbandoned(sellerId, checkoutUlid, body)
+  const result = await service.handleUpdateCheckoutAbandoned(seller_id, checkout_ulid, body)
   return c.json(apiResponse({ success: true, data: result }))
 }
 
 export async function markAsRecovered (c: Context) {
-  const sellerId = Number(c.req.param('sellerId'))
+  const seller_id = Number(c.req.param('seller_id'))
   const body = await c.req.json()
-  const result = await service.handleMarkAsRecovered(sellerId, body)
+  const result = await service.handleMarkAsRecovered(seller_id, body)
   return c.json(apiResponse({ success: true, data: result }))
 }
 
@@ -103,10 +103,10 @@ export const createFlatBatchAbandonedCarts = withTiming('createFlatBatchAbandone
     throw new Error('Batch size cannot exceed 10,000 carts')
   }
 
-  // Validar que todos los carts tengan sellerId
-  const cartsWithoutSellerId = body.carts.filter(cart => !cart.sellerId)
-  if (cartsWithoutSellerId.length > 0) {
-    throw new Error(`${cartsWithoutSellerId.length} carts are missing sellerId`)
+  // Validar que todos los carts tengan seller_id
+  const carts_without_seller_id = body.carts.filter(cart => !cart.seller_id)
+  if (carts_without_seller_id.length > 0) {
+    throw new Error(`${carts_without_seller_id.length} carts are missing seller_id`)
   }
 
   const result = await service.handleFlatBatchAbandonedCarts(body)
