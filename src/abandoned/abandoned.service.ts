@@ -4,6 +4,7 @@ import * as repo from './abandoned.repository.js'
 import {
   CheckoutAbandonedPayload,
   CreateCartAbandonedPayload,
+  FlatBatchAbandonedCartsPayload,
   MarkAsRecoveredPayload,
   UpdateCartPayload
 } from './abandoned.types.js'
@@ -664,4 +665,268 @@ export async function healthCheck (): Promise<{
       }
     }
   }
+}
+
+export async function handleFlatBatchAbandonedCarts (
+  payload: FlatBatchAbandonedCartsPayload
+): Promise<{
+  message: string
+  batchId: string
+  totalProcessed: number
+  totalCreated: number
+  totalUpdated: number
+  totalErrors: number
+  executionTime: string
+  sellerStats: Record<number, {
+    processed: number
+    created: number
+    updated: number
+    errors: number
+  }>
+}> {
+  const startTime = Date.now()
+
+  console.log(`Processing flat batch ${payload.batchId}`, {
+    totalCarts: payload.totalCarts,
+    totalSellers: payload.totalSellers
+  })
+
+  const overallStats = {
+    totalProcessed: 0,
+    totalCreated: 0,
+    totalUpdated: 0,
+    totalErrors: 0
+  }
+
+  const sellerStats: Record<number, any> = {}
+
+  try {
+    // ✅ Agrupar carts por sellerId automáticamente
+    const cartsBySeller = payload.carts.reduce((acc, cart) => {
+      if (!acc[cart.sellerId]) {
+        acc[cart.sellerId] = []
+      }
+      acc[cart.sellerId].push(cart)
+      return acc
+    }, {} as Record<number, typeof payload.carts>)
+
+    console.log(`Grouped carts for ${Object.keys(cartsBySeller).length} sellers`)
+
+    // ✅ Procesar cada seller en paralelo (con límite de concurrencia)
+    const sellerIds = Object.keys(cartsBySeller).map(Number)
+    const concurrencyLimit = 5
+    const sellerChunks = chunkArray(sellerIds, concurrencyLimit)
+
+    for (const chunk of sellerChunks) {
+      const chunkPromises = chunk.map(async (sellerId) => {
+        const sellerCarts = cartsBySeller[sellerId]
+        return processFlatSellerCarts(sellerId, sellerCarts, payload.timestamp)
+      })
+
+      const chunkResults = await Promise.allSettled(chunkPromises)
+
+      // Agregar resultados
+      chunkResults.forEach((result, index) => {
+        const sellerId = chunk[index]
+
+        if (result.status === 'fulfilled') {
+          const stats = result.value
+          sellerStats[sellerId] = stats
+
+          overallStats.totalProcessed += stats.processed
+          overallStats.totalCreated += stats.created
+          overallStats.totalUpdated += stats.updated
+          overallStats.totalErrors += stats.errors
+        } else {
+          console.error(`Failed to process seller ${sellerId}:`, result.reason)
+          const sellerCartsCount = cartsBySeller[sellerId].length
+
+          sellerStats[sellerId] = {
+            processed: 0,
+            created: 0,
+            updated: 0,
+            errors: sellerCartsCount
+          }
+
+          overallStats.totalErrors += sellerCartsCount
+        }
+      })
+    }
+
+    // ✅ Procesar métricas para todos los sellers
+    await processFlatBatchMetrics(cartsBySeller, payload.timestamp)
+
+    const executionTime = `${Date.now() - startTime}ms`
+
+    console.log('Flat batch processing completed:', {
+      ...overallStats,
+      executionTime,
+      batchId: payload.batchId
+    })
+
+    return {
+      message: 'Flat batch processed successfully',
+      batchId: payload.batchId,
+      ...overallStats,
+      executionTime,
+      sellerStats
+    }
+  } catch (error) {
+    console.error('Flat batch processing failed:', error)
+    throw new Error(`Failed to process flat batch: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Procesa carts de un seller específico
+ */
+async function processFlatSellerCarts (
+  sellerId: number,
+  carts: any[],
+  timestamp: string
+): Promise<{ processed: number; created: number; updated: number; errors: number }> {
+  console.log(`Processing seller ${sellerId} with ${carts.length} carts`)
+
+  const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
+
+  try {
+    // ✅ Procesar en micro-batches
+    const microBatchSize = 50
+    const microBatches = chunkArray(carts, microBatchSize)
+
+    for (const microBatch of microBatches) {
+      const microStats = await processMicroBatchCarts(sellerId, microBatch, timestamp)
+
+      stats.processed += microStats.processed
+      stats.created += microStats.created
+      stats.updated += microStats.updated
+      stats.errors += microStats.errors
+    }
+
+    return stats
+  } catch (error) {
+    console.error(`Error processing seller ${sellerId}:`, error)
+    stats.errors = carts.length
+    return stats
+  }
+}
+
+/**
+ * Procesa métricas para la estructura flat
+ */
+async function processFlatBatchMetrics (
+  cartsBySeller: Record<number, any[]>,
+  timestamp: string
+): Promise<void> {
+  const date = generateDateKey(timestamp)
+
+  // ✅ Crear métricas por seller
+  for (const [sellerIdStr, carts] of Object.entries(cartsBySeller)) {
+    const sellerId = Number(sellerIdStr)
+    const totalAmount = carts.reduce((sum, cart) => sum + cart.totalAmount, 0)
+
+    metricsBatch.addMetric({
+      sellerId,
+      date,
+      type: 'abandonment',
+      category: 'cart',
+      amount: totalAmount,
+      count: carts.length
+    })
+  }
+}
+
+/**
+ * Divide array en chunks
+ */
+function chunkArray<T> (array: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size))
+  }
+  return chunks
+}
+
+/**
+ * Procesa un micro-batch de carritos (operación atómica)
+ */
+async function processMicroBatchCarts (
+  sellerId: number,
+  carts: any[],
+  timestamp: string
+): Promise<{ processed: number; created: number; updated: number; errors: number }> {
+  const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
+
+  // Preparar operaciones bulk para MongoDB
+  const bulkOps = []
+  const now = new Date(timestamp)
+
+  for (const cart of carts) {
+    try {
+      const session: AbandonedSession = {
+        sellerId,
+        sessionType: 'CART_ORIGINATED',
+        platform: cart.platform,
+        email: cart.email,
+        customerInfo: {
+          type: cart.userId ? 'registered' : 'guest',
+          email: cart.email,
+          fullName: cart.fullName || '',
+          ...(cart.userId && { userId: cart.userId })
+        },
+        identifiers: {
+          cartId: cart.cartId,
+          checkoutUlid: null
+        },
+        products: cart.products,
+        productsCount: cart.products.length,
+        totalAmount: cart.totalAmount,
+        currency: cart.currency,
+        status: {
+          cart: 'ABANDONED',
+          checkout: null
+        },
+        events: [{
+          type: 'CART_ABANDONED_BATCH',
+          timestamp: cart.abandonedAt,
+          details: {
+            batchProcessed: true,
+            originalTimestamp: cart.abandonedAt
+          }
+        }],
+        date: generateDateKey(cart.abandonedAt),
+        createdAt: now,
+        updatedAt: now,
+        cartUpdatedAt: new Date(cart.lastUpdated)
+      }
+
+      // Usar upsert para evitar duplicados
+      bulkOps.push({
+        replaceOne: {
+          filter: { 'identifiers.cartId': cart.cartId },
+          replacement: session,
+          upsert: true
+        }
+      })
+
+      stats.processed++
+    } catch (error) {
+      console.error(`Error preparing cart ${cart.cartId}:`, error)
+      stats.errors++
+    }
+  }
+
+  // Ejecutar bulk operation
+  if (bulkOps.length > 0) {
+    try {
+      const result = await repo.executeBulkWrite(bulkOps)
+      stats.created = result.upsertedCount
+      stats.updated = result.modifiedCount
+    } catch (error) {
+      console.error('Bulk write error:', error)
+      stats.errors += bulkOps.length
+    }
+  }
+
+  return stats
 }

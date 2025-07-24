@@ -58,3 +58,30 @@ export interface MarkAsRecoveredPayload {
     details?: any
   }
 }
+
+export interface FlatBatchAbandonedCartsPayload {
+  batchId: string
+  timestamp: string
+  totalCarts: number
+  totalSellers: number
+  carts: {
+    sellerId: number              // ✅ Cada cart tiene su sellerId
+    cartId: string
+    userId?: number
+    email: string
+    fullName?: string
+    phone?: string
+    products: any[]
+    totalAmount: number
+    currency: string
+    platform: string
+    abandonedAt: string
+    lastUpdated: string
+    shippingAddress?: {
+      country: string
+      state: string
+      city: string
+      zipCode: string
+    }
+  }[]
+}

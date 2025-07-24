@@ -231,3 +231,14 @@ export async function processBatchMetrics (operations: MetricOperation[]): Promi
     await db.collection(METRICS_COLLECTION).bulkWrite(bulkOps, { ordered: false })
   }
 }
+
+/**
+ * Ejecuta operaciones bulk en MongoDB
+ */
+export async function executeBulkWrite (operations: any[]) {
+  const db = await connectToDatabase()
+  return db.collection(SESSION_COLLECTION).bulkWrite(operations, {
+    ordered: false,
+    writeConcern: { w: 1, j: false } // Más rápido para batch
+  })
+}

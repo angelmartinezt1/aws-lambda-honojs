@@ -18,4 +18,6 @@ abandonedRoutes.put('/:sellerId/abandoned/checkout/:checkoutUlid', controller.up
 // 🔁 Marcar sesión como recuperada
 abandonedRoutes.patch('/:sellerId/abandoned/recover', controller.markAsRecovered)
 
+abandonedRoutes.post('/abandoned/flat-batch', controller.createFlatBatchAbandonedCarts)
+
 export default abandonedRoutes
