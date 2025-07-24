@@ -51,15 +51,35 @@ export async function appendEventByCartId (cartId: string, event: AbandonedEvent
 //
 // Agregar evento a sesión por checkoutUlid
 //
-export async function appendEventByCheckoutUlid (checkoutUlid: string, event: AbandonedEvent) {
+export async function appendEventByCheckoutUlid (
+  checkoutUlid: string,
+  newEvent: AbandonedEvent
+) {
   const db = await connectToDatabase()
-  return db.collection(SESSION_COLLECTION).updateOne(
+  const collection = db.collection(SESSION_COLLECTION)
+
+  const session = await collection.findOne({ 'identifiers.checkoutUlid': checkoutUlid })
+  if (!session) return
+
+  const alreadyExists = session.events?.some(
+    (e: AbandonedEvent) =>
+      e.type === newEvent.type &&
+      new Date(e.timestamp).getTime() === new Date(newEvent.timestamp).getTime()
+  )
+
+  if (alreadyExists) {
+    return { matched: true, added: false }
+  }
+
+  await collection.updateOne(
     { 'identifiers.checkoutUlid': checkoutUlid },
     {
-      $push: { events: event },
+      $push: { events: newEvent },
       $set: { updatedAt: new Date() }
     }
   )
+
+  return { matched: true, added: true }
 }
 
 //
