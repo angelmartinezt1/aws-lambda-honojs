@@ -900,7 +900,7 @@ async function processMicroBatchCarts (
 
   // Preparar operaciones bulk para MongoDB
   const bulkOps = []
-  const now = new Date(timestamp)
+  const now = new Date()
 
   for (const cart of carts) {
     try {
@@ -942,10 +942,42 @@ async function processMicroBatchCarts (
       }
 
       // Usar upsert para evitar duplicados
-      bulkOps.push({
+      /* bulkOps.push({
         replaceOne: {
           filter: { 'identifiers.cartId': cart.cartId },
           replacement: session,
+          upsert: true
+        }
+      }) */
+
+      // ✅ SOLUCIÓN: updateOne con $setOnInsert y $set
+      bulkOps.push({
+        updateOne: {
+          filter: { 'identifiers.cartId': cart.cartId },
+          update: {
+            $setOnInsert: {
+              // ✅ Solo se asignan si es un documento NUEVO
+              sellerId: session.sellerId,
+              sessionType: session.sessionType,
+              platform: session.platform,
+              email: session.email,
+              customerInfo: session.customerInfo,
+              identifiers: session.identifiers,
+              currency: session.currency,
+              status: session.status,
+              date: session.date,
+              createdAt: now,  // ✅ Solo se asigna en INSERT
+              events: session.events
+            },
+            $set: {
+              // ✅ Siempre se actualizan (tanto INSERT como UPDATE)
+              products: session.products,
+              productsCount: session.productsCount,
+              totalAmount: session.totalAmount,
+              updatedAt: now,  // ✅ Se actualiza siempre
+              cartUpdatedAt: session.cartUpdatedAt
+            }
+          },
           upsert: true
         }
       })
