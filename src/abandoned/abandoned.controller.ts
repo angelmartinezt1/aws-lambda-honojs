@@ -3,10 +3,12 @@ import { apiResponse } from '../utils/response.js'
 import * as service from './abandoned.service.js'
 
 export async function createCartAbandoned (c: Context) {
+  const start = Date.now()
   const sellerId = Number(c.req.param('sellerId'))
   const body = await c.req.json()
   const result = await service.handleCreateCartAbandoned(sellerId, body)
-  return c.json(apiResponse({ success: true, data: result }))
+  const executionTime = `${Date.now() - start}ms`
+  return c.json(apiResponse({ success: true, data: result, executionTime }))
 }
 
 export async function updateCartAbandoned (c: Context) {

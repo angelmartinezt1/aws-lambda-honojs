@@ -123,3 +123,12 @@ export async function findSessionByCartId (cartId: string) {
   const db = await connectToDatabase()
   return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.cartId': cartId })
 }
+
+export async function hasEventByCartId (cartId: string, eventType: string): Promise<boolean> {
+  const db = await connectToDatabase()
+  const doc = await db.collection(SESSION_COLLECTION).findOne({
+    'identifiers.cartId': cartId,
+    'events.type': eventType
+  })
+  return !!doc
+}

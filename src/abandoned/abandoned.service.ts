@@ -17,7 +17,7 @@ export async function handleCreateCartAbandoned (
   const existing = await repo.findSessionByCartId(cartId)
 
   if (existing) {
-    // Solo actualiza campos importantes y agrega el evento
+    // 1. Actualiza campos importantes de la sesión
     await repo.updateSessionByCartId(cartId, {
       products: payload.products,
       productsCount: payload.productsCount,
@@ -25,10 +25,17 @@ export async function handleCreateCartAbandoned (
       updatedAt: now,
       cartUpdatedAt: now
     })
-    await repo.appendEventByCartId(cartId, event)
+
+    // 2. Solo agregar evento si aún no existe
+    const alreadyHasEvent = await repo.hasEventByCartId(cartId, event.type)
+    if (!alreadyHasEvent) {
+      await repo.appendEventByCartId(cartId, event)
+    }
 
     return {
-      message: 'Session updated (already existed)',
+      message: alreadyHasEvent
+        ? 'Session updated (event already existed)'
+        : 'Session updated and event added',
       cartId,
       alreadyExists: true
     }
