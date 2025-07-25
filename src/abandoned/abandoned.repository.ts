@@ -9,7 +9,7 @@ const METRICS_COLLECTION = 'abandoned_metrics'
 //
 export async function insertSession (session: AbandonedSession) {
   const db = await connectToDatabase()
-  await db.collection(SESSION_COLLECTION).insertOne(session)
+  await db.collection<AbandonedSession>(SESSION_COLLECTION).insertOne(session)
 }
 
 //
@@ -44,7 +44,7 @@ export async function appendEventByCartId (cart_id: string, event: AbandonedEven
     {
       $push: { events: event },
       $set: { updated_at: new Date() }
-    }
+    } as any
   )
 }
 
@@ -76,7 +76,7 @@ export async function appendEventByCheckoutUlid (
     {
       $push: { events: new_event },
       $set: { updated_at: new Date() }
-    }
+    } as any
   )
 
   return { matched: true, added: true }

@@ -5,6 +5,10 @@ export interface CreateCartAbandonedPayload {
     user_id: number
     email: string
     full_name: string
+    marketing?: {
+      email?: { subscribed: boolean }
+      sms?: { subscribed: boolean }
+    }
   }
   products: any[]
   products_count: number
@@ -38,6 +42,7 @@ export interface CheckoutAbandonedPayload {
   }
   total_amount: number
   currency: string
+  products: any[]
   identifiers: {
     cart_id: null
     checkout_ulid: string

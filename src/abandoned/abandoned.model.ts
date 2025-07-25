@@ -10,7 +10,7 @@ export interface AbandonedSession {
   platform: string
   identifiers: {
     cart_id?: string | null
-    checkout_ulid?: string
+    checkout_ulid?: string | null
   }
   customer_info: {
     type: 'registered' | 'guest'
