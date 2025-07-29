@@ -2,10 +2,20 @@ import { generateDateKey } from '../utils/date'
 import { AbandonedSession } from './abandoned.model.js'
 import * as repo from './abandoned.repository.js'
 import {
+  AdminAbandonedItem,
+  AdminListAbandonedQuery,
+  AdminListResponse,
+  AdminProductItem,
+  AdminStatsQuery,
+  AdminStatsResponse,
   CheckoutAbandonedPayload,
   CreateCartAbandonedPayload,
+  DateRange,
   FlatBatchAbandonedCartsPayload,
   MarkAsRecoveredPayload,
+  MetricsData,
+  SortCriteria,
+  StatsMetric,
   UpdateCartPayload
 } from './abandoned.types.js'
 
@@ -21,11 +31,11 @@ interface ValidationError {
 function validateCartPayload (payload: CreateCartAbandonedPayload): ValidationError[] {
   const errors: ValidationError[] = []
 
-  if (!payload.identifiers?.cartId?.trim()) {
-    errors.push({ field: 'cartId', message: 'CartId is required and cannot be empty' })
+  if (!payload.identifiers?.cart_id?.trim()) {
+    errors.push({ field: 'cart_id', message: 'cart_id is required and cannot be empty' })
   }
 
-  if (!payload.customerInfo?.email?.trim()) {
+  if (!payload.customer_info?.email?.trim()) {
     errors.push({ field: 'email', message: 'Customer email is required' })
   }
 
@@ -33,8 +43,8 @@ function validateCartPayload (payload: CreateCartAbandonedPayload): ValidationEr
     errors.push({ field: 'products', message: 'Products array cannot be empty' })
   }
 
-  if (!payload.totalAmount || payload.totalAmount <= 0) {
-    errors.push({ field: 'totalAmount', message: 'Total amount must be greater than 0' })
+  if (!payload.total_amount || payload.total_amount <= 0) {
+    errors.push({ field: 'total_amount', message: 'total_amount must be greater than 0' })
   }
 
   return errors
@@ -43,16 +53,16 @@ function validateCartPayload (payload: CreateCartAbandonedPayload): ValidationEr
 function validateCheckoutPayload (payload: CheckoutAbandonedPayload): ValidationError[] {
   const errors: ValidationError[] = []
 
-  if (!payload.identifiers?.checkoutUlid?.trim()) {
-    errors.push({ field: 'checkoutUlid', message: 'CheckoutUlid is required' })
+  if (!payload.identifiers?.checkout_ulid?.trim()) {
+    errors.push({ field: 'checkout_ulid', message: 'checkout_ulid is required' })
   }
 
-  if (!payload.customerInfo?.email?.trim()) {
+  if (!payload.customer_info?.email?.trim()) {
     errors.push({ field: 'email', message: 'Customer email is required' })
   }
 
-  if (!payload.totalAmount || payload.totalAmount <= 0) {
-    errors.push({ field: 'totalAmount', message: 'Total amount must be greater than 0' })
+  if (!payload.total_amount || payload.total_amount <= 0) {
+    errors.push({ field: 'total_amount', message: 'total_amount must be greater than 0' })
   }
 
   return errors
@@ -61,26 +71,26 @@ function validateCheckoutPayload (payload: CheckoutAbandonedPayload): Validation
 // Utility para retry con backoff exponencial
 async function withRetry<T> (
   operation: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 100
+  max_retries = 3,
+  base_delay = 100
 ): Promise<T> {
-  let lastError: Error
+  let last_error: Error = new Error('No attempts made')
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= max_retries; attempt++) {
     try {
       return await operation()
     } catch (error) {
-      lastError = error as Error
+      last_error = error as Error
 
-      if (attempt === maxRetries) break
+      if (attempt === max_retries) break
 
       // Exponential backoff con jitter
-      const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 100
+      const delay = base_delay * Math.pow(2, attempt - 1) + Math.random() * 100
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
 
-  throw lastError!
+  throw last_error
 }
 
 // ==========================================
@@ -88,12 +98,12 @@ async function withRetry<T> (
 // ==========================================
 
 interface MetricOperation {
-  sellerId: number
+  seller_id: number
   date: string
   type: 'abandonment' | 'recovery'
   category: 'cart' | 'checkout'
   amount: number
-  sessionId?: string
+  session_id?: string
 }
 
 class MetricsBatch {
@@ -147,8 +157,8 @@ class MetricsBatch {
       // Fallback en caso de error
       try {
         await this.processBatchIndividually(batch)
-      } catch (fallbackError) {
-        console.error('Fallback metrics processing also failed:', fallbackError)
+      } catch (fallback_error) {
+        console.error('Fallback metrics processing also failed:', fallback_error)
         // Re-queue failed operations (con límite)
         if (batch.length < 1000) {
           this.queue.unshift(...batch)
@@ -169,9 +179,9 @@ class MetricsBatch {
         if (operation.type === 'abandonment') {
           // Usar la función original
           await repo.incrementMetricForAbandonment(
-            operation.sellerId,
+            operation.seller_id,
             {
-              totalAmount: operation.amount,
+              total_amount: operation.amount,
               date: operation.date
             } as any,
             operation.category
@@ -179,9 +189,9 @@ class MetricsBatch {
         } else if (operation.type === 'recovery') {
           // Usar la función original
           await repo.incrementMetricForRecovery(
-            operation.sellerId,
+            operation.seller_id,
             operation.category,
-            operation.sessionId || ''
+            operation.session_id || ''
           )
         }
       } catch (error) {
@@ -200,7 +210,7 @@ class MetricsBatch {
   }
 }
 
-const metricsBatch = MetricsBatch.getInstance()
+const metrics_batch = MetricsBatch.getInstance()
 
 // ==========================================
 // SERVICE IMPLEMENTATIONS OPTIMIZADAS
@@ -210,72 +220,72 @@ const metricsBatch = MetricsBatch.getInstance()
  * 1. Crear carrito abandonado - OPTIMIZADO
  */
 export async function handleCreateCartAbandoned (
-  sellerId: number,
+  seller_id: number,
   payload: CreateCartAbandonedPayload
 ): Promise<{
   message: string
-  cartId: string
-  alreadyExists: boolean
-  validationErrors?: ValidationError[]
+  cart_id: string
+  already_exists: boolean
+  validation_errors?: ValidationError[]
 }> {
   // 1. Validación temprana
-  const validationErrors = validateCartPayload(payload)
-  if (validationErrors.length > 0) {
+  const validation_errors = validateCartPayload(payload)
+  if (validation_errors.length > 0) {
     return {
       message: 'Validation failed',
-      cartId: payload.identifiers.cartId,
-      alreadyExists: false,
-      validationErrors
+      cart_id: payload.identifiers.cart_id,
+      already_exists: false,
+      validation_errors
     }
   }
 
-  const cartId = payload.identifiers.cartId
+  const cart_id = payload.identifiers.cart_id
   const event = payload.event
   const now = new Date(event.timestamp)
 
   try {
     // 2. Operación atómica - buscar y actualizar o crear
     const result = await withRetry(async () => {
-      const existing = await repo.findSessionByCartId(cartId)
+      const existing = await repo.findSessionByCartId(cart_id)
 
       if (existing) {
         // Actualizar sesión existente
-        await repo.updateSessionByCartId(cartId, {
+        await repo.updateSessionByCartId(cart_id, {
           products: payload.products,
-          productsCount: payload.productsCount,
-          totalAmount: payload.totalAmount,
-          updatedAt: now,
-          cartUpdatedAt: now
+          products_count: payload.products_count,
+          total_amount: payload.total_amount,
+          updated_at: now,
+          cart_updated_at: now
         })
 
         // Solo agregar evento si no existe ya
-        const alreadyHasEvent = await repo.hasEventByCartId(cartId, event.type)
-        if (!alreadyHasEvent) {
-          await repo.appendEventByCartId(cartId, event)
+        const already_has_event = await repo.hasEventByCartId(cart_id, event.type)
+        if (!already_has_event) {
+          await repo.appendEventByCartId(cart_id, event)
         }
 
-        return { wasNew: false, alreadyHasEvent }
+        return { was_new: false, already_has_event }
       }
 
       // Crear nueva sesión
       const session: AbandonedSession = {
-        sellerId,
-        sessionType: payload.sessionType,
+        seller_id,
+        session_type: payload.session_type,
         platform: payload.platform,
-        email: payload.customerInfo.email,
-        customerInfo: {
+        email: payload.customer_info.email,
+        customer_info: {
           type: 'registered',
-          email: payload.customerInfo.email,
-          fullName: payload.customerInfo.fullName,
-          marketing: payload.customerInfo.marketing ?? {}
+          email: payload.customer_info.email,
+          full_name: payload.customer_info.full_name,
+          marketing: payload.customer_info.marketing ?? {}
         },
         identifiers: {
-          cartId,
-          checkoutUlid: null
+          cart_id,
+          checkout_ulid: null
         },
         products: payload.products,
-        productsCount: payload.productsCount,
-        totalAmount: payload.totalAmount,
+        products_count: payload.products_count,
+        total_amount: payload.total_amount,
         currency: payload.currency,
         status: {
           cart: 'ABANDONED',
@@ -283,34 +293,34 @@ export async function handleCreateCartAbandoned (
         },
         events: [event],
         date: generateDateKey(event.timestamp),
-        createdAt: now,
-        updatedAt: now,
-        cartUpdatedAt: now
+        created_at: now,
+        updated_at: now,
+        cart_updated_at: now
       }
 
       await repo.insertSession(session)
-      return { wasNew: true, alreadyHasEvent: false }
+      return { was_new: true, already_has_event: false }
     })
 
     // 3. Métricas asíncronas - solo para nuevas sesiones
-    if (result.wasNew) {
-      metricsBatch.addMetric({
-        sellerId,
+    if (result.was_new) {
+      metrics_batch.addMetric({
+        seller_id,
         date: generateDateKey(event.timestamp),
         type: 'abandonment',
         category: 'cart',
-        amount: payload.totalAmount
+        amount: payload.total_amount
       })
     }
 
     return {
-      message: result.wasNew
+      message: result.was_new
         ? 'New cart session created'
-        : result.alreadyHasEvent
+        : result.already_has_event
           ? 'Session updated (event already existed)'
           : 'Session updated and event added',
-      cartId,
-      alreadyExists: !result.wasNew
+      cart_id,
+      already_exists: !result.was_new
     }
   } catch (error) {
     console.error('Error in handleCreateCartAbandoned:', error)
@@ -322,12 +332,12 @@ export async function handleCreateCartAbandoned (
  * 2. Actualizar carrito abandonado - OPTIMIZADO
  */
 export async function handleUpdateCartAbandoned (
-  sellerId: number,
-  cartId: string,
+  seller_id: number,
+  cart_id: string,
   payload: UpdateCartPayload
-): Promise<{ cartId: string; updated: boolean }> {
-  if (!cartId?.trim()) {
-    throw new Error('CartId is required')
+): Promise<{ cart_id: string; updated: boolean }> {
+  if (!cart_id?.trim()) {
+    throw new Error('cart_id is required')
   }
 
   if (!payload.products || payload.products.length === 0) {
@@ -339,23 +349,23 @@ export async function handleUpdateCartAbandoned (
   try {
     const result = await withRetry(async () => {
       // Operación atómica - update + append event
-      const updateResult = await repo.updateSessionByCartId(cartId, {
+      const update_result = await repo.updateSessionByCartId(cart_id, {
         products: payload.products,
-        productsCount: payload.productsCount,
-        totalAmount: payload.totalAmount,
-        updatedAt: now,
-        cartUpdatedAt: now
+        products_count: payload.products_count,
+        total_amount: payload.total_amount,
+        updated_at: now,
+        cart_updated_at: now
       })
 
-      if (updateResult.matchedCount > 0) {
-        await repo.appendEventByCartId(cartId, payload.event)
+      if (update_result.matchedCount > 0) {
+        await repo.appendEventByCartId(cart_id, payload.event)
       }
 
-      return updateResult
+      return update_result
     })
 
     return {
-      cartId,
+      cart_id,
       updated: result.matchedCount > 0
     }
   } catch (error) {
@@ -368,74 +378,74 @@ export async function handleUpdateCartAbandoned (
  * 3. Crear checkout abandonado - OPTIMIZADO
  */
 export async function handleCreateCheckoutAbandoned (
-  sellerId: number,
+  seller_id: number,
   payload: CheckoutAbandonedPayload
 ): Promise<{
   message: string
-  checkoutUlid: string
-  alreadyExists: boolean
-  validationErrors?: ValidationError[]
+  checkout_ulid: string
+  already_exists: boolean
+  validation_errors?: ValidationError[]
 }> {
   // 1. Validación temprana
-  const validationErrors = validateCheckoutPayload(payload)
-  if (validationErrors.length > 0) {
+  const validation_errors = validateCheckoutPayload(payload)
+  if (validation_errors.length > 0) {
     return {
       message: 'Validation failed',
-      checkoutUlid: payload.identifiers.checkoutUlid,
-      alreadyExists: false,
-      validationErrors
+      checkout_ulid: payload.identifiers.checkout_ulid,
+      already_exists: false,
+      validation_errors
     }
   }
 
-  const { checkoutUlid, cartId } = payload.identifiers
+  const { checkout_ulid, cart_id } = payload.identifiers
   const now = new Date(payload.event.timestamp)
 
   try {
     // 2. Operación atómica
     const result = await withRetry(async () => {
-      const existing = await repo.findSessionByCheckoutUlid(checkoutUlid)
+      const existing = await repo.findSessionByCheckoutUlid(checkout_ulid)
 
       if (existing) {
         // Actualizar sesión existente
         const updates: Partial<AbandonedSession> = {
-          updatedAt: now
+          updated_at: now
         }
 
         if (payload.products && payload.products.length > 0) {
           updates.products = payload.products
-          updates.productsCount = payload.products.length
-          updates.totalAmount = payload.totalAmount
+          updates.products_count = payload.products.length
+          updates.total_amount = payload.total_amount
         }
 
-        if (cartId) {
-          updates.identifiers = { ...existing.identifiers, cartId }
+        if (cart_id) {
+          updates.identifiers = { ...existing.identifiers, cart_id }
         }
 
-        await repo.updateSessionByCheckoutUlid(checkoutUlid, updates)
-        await repo.appendEventByCheckoutUlid(checkoutUlid, payload.event)
+        await repo.updateSessionByCheckoutUlid(checkout_ulid, updates)
+        await repo.appendEventByCheckoutUlid(checkout_ulid, payload.event)
 
-        return { wasNew: false }
+        return { was_new: false }
       }
 
       // Crear nueva sesión
       const session: AbandonedSession = {
-        sellerId,
-        sessionType: payload.sessionType,
+        seller_id,
+        session_type: payload.session_type,
         platform: payload.platform,
-        email: payload.customerInfo.email,
-        customerInfo: {
-          type: payload.customerInfo.type,
-          email: payload.customerInfo.email,
-          fullName: payload.customerInfo.fullName ?? '',
-          marketing: payload.customerInfo.marketing ?? {}
+        email: payload.customer_info.email,
+        customer_info: {
+          type: payload.customer_info.type,
+          email: payload.customer_info.email,
+          full_name: payload.customer_info.full_name ?? '',
+          marketing: payload.customer_info.marketing ?? {}
         },
         identifiers: {
-          cartId: cartId ?? null,
-          checkoutUlid
+          cart_id: cart_id ?? null,
+          checkout_ulid
         },
         products: payload.products ?? [],
-        productsCount: payload.products?.length ?? 0,
-        totalAmount: payload.totalAmount,
+        products_count: payload.products?.length ?? 0,
+        total_amount: payload.total_amount,
         currency: payload.currency,
         status: {
           cart: null,
@@ -443,29 +453,29 @@ export async function handleCreateCheckoutAbandoned (
         },
         events: [payload.event],
         date: generateDateKey(payload.event.timestamp),
-        createdAt: now,
-        updatedAt: now
+        created_at: now,
+        updated_at: now
       }
 
       await repo.insertSession(session)
-      return { wasNew: true }
+      return { was_new: true }
     })
 
     // 3. Métricas asíncronas - solo para nuevas sesiones
-    if (result.wasNew) {
-      metricsBatch.addMetric({
-        sellerId,
+    if (result.was_new) {
+      metrics_batch.addMetric({
+        seller_id,
         date: generateDateKey(payload.event.timestamp),
         type: 'abandonment',
         category: 'checkout',
-        amount: payload.totalAmount
+        amount: payload.total_amount
       })
     }
 
     return {
-      message: result.wasNew ? 'New checkout session created' : 'Checkout session updated',
-      checkoutUlid,
-      alreadyExists: !result.wasNew
+      message: result.was_new ? 'New checkout session created' : 'Checkout session updated',
+      checkout_ulid,
+      already_exists: !result.was_new
     }
   } catch (error) {
     console.error('Error in handleCreateCheckoutAbandoned:', error)
@@ -477,43 +487,43 @@ export async function handleCreateCheckoutAbandoned (
  * 4. Actualizar sesión de checkout - OPTIMIZADO
  */
 export async function handleUpdateCheckoutAbandoned (
-  sellerId: number,
-  checkoutUlid: string,
-  payload: Partial<CheckoutAbandonedPayload & { cartId?: string }>
-): Promise<{ checkoutUlid: string; updated: boolean }> {
-  if (!checkoutUlid?.trim()) {
-    throw new Error('CheckoutUlid is required')
+  seller_id: number,
+  checkout_ulid: string,
+  payload: Partial<CheckoutAbandonedPayload & { cart_id?: string }>
+): Promise<{ checkout_ulid: string; updated: boolean }> {
+  if (!checkout_ulid?.trim()) {
+    throw new Error('checkout_ulid is required')
   }
 
   try {
     const result = await withRetry(async () => {
-      const updateFields: any = {
-        updatedAt: new Date(payload.event?.timestamp || Date.now())
+      const update_fields: any = {
+        updated_at: new Date(payload.event?.timestamp || Date.now())
       }
 
-      // Solo actualizar cartId si viene en el payload
-      if (payload.cartId) {
-        updateFields['identifiers.cartId'] = payload.cartId
+      // Solo actualizar cart_id si viene en el payload
+      if (payload.cart_id) {
+        update_fields['identifiers.cart_id'] = payload.cart_id
       }
 
       // Actualizar productos si vienen
       if (payload.products && payload.products.length > 0) {
-        updateFields.products = payload.products
-        updateFields.productsCount = payload.products.length
-        updateFields.totalAmount = payload.totalAmount
+        update_fields.products = payload.products
+        update_fields.products_count = payload.products.length
+        update_fields.total_amount = payload.total_amount
       }
 
-      const updateResult = await repo.updateSessionByCheckoutUlid(checkoutUlid, updateFields)
+      const update_result = await repo.updateSessionByCheckoutUlid(checkout_ulid, update_fields)
 
-      if (updateResult.matchedCount > 0 && payload.event) {
-        await repo.appendEventByCheckoutUlid(checkoutUlid, payload.event)
+      if (update_result.matchedCount > 0 && payload.event) {
+        await repo.appendEventByCheckoutUlid(checkout_ulid, payload.event)
       }
 
-      return updateResult
+      return update_result
     })
 
     return {
-      checkoutUlid,
+      checkout_ulid,
       updated: result.matchedCount > 0
     }
   } catch (error) {
@@ -526,13 +536,13 @@ export async function handleUpdateCheckoutAbandoned (
  * 5. Marcar sesión como recuperada - OPTIMIZADO
  */
 export async function handleMarkAsRecovered (
-  sellerId: number,
+  seller_id: number,
   payload: MarkAsRecoveredPayload
 ): Promise<{
   message: string
   id: string
   recovered: boolean
-  alreadyRecovered?: boolean
+  already_recovered?: boolean
 }> {
   const { type, id, event } = payload
 
@@ -545,22 +555,22 @@ export async function handleMarkAsRecovered (
   }
 
   const now = new Date(event.timestamp)
-  const isCart = type === 'cart'
+  const is_cart = type === 'cart'
 
   try {
     // 1. Verificar si ya está recuperado y actualizar atomicamente
     const result = await withRetry(async () => {
       // Verificar si ya existe el evento de recuperación
-      const alreadyHasEvent = isCart
+      const already_has_event = is_cart
         ? await repo.hasEventByCartId(id, event.type)
         : await repo.hasEventByCheckoutUlid(id, event.type)
 
-      if (alreadyHasEvent) {
-        return { alreadyRecovered: true, session: null }
+      if (already_has_event) {
+        return { already_recovered: true, session: null }
       }
 
       // Obtener la sesión antes de actualizar para las métricas
-      const session = isCart
+      const session = is_cart
         ? await repo.findSessionByCartId(id)
         : await repo.findSessionByCheckoutUlid(id)
 
@@ -569,44 +579,44 @@ export async function handleMarkAsRecovered (
       }
 
       // Actualizar el status a RECOVERED
-      const statusField = isCart ? 'status.cart' : 'status.checkout'
-      const updatedAtField = isCart ? 'cartUpdatedAt' : 'checkoutUpdatedAt'
+      const status_field = is_cart ? 'status.cart' : 'status.checkout'
+      const updated_at_field = is_cart ? 'cart_updated_at' : 'checkout_updated_at'
 
-      const updateFields: Record<string, any> = {
-        [statusField]: 'RECOVERED',
-        updatedAt: now,
-        [updatedAtField]: now
+      const update_fields: Record<string, any> = {
+        [status_field]: 'RECOVERED',
+        updated_at: now,
+        [updated_at_field]: now
       }
 
-      if (isCart) {
-        await repo.updateSessionByCartId(id, updateFields)
+      if (is_cart) {
+        await repo.updateSessionByCartId(id, update_fields)
         await repo.appendEventByCartId(id, event)
       } else {
-        await repo.updateSessionByCheckoutUlid(id, updateFields)
+        await repo.updateSessionByCheckoutUlid(id, update_fields)
         await repo.appendEventByCheckoutUlid(id, event)
       }
 
-      return { alreadyRecovered: false, session }
+      return { already_recovered: false, session }
     })
 
-    if (result.alreadyRecovered) {
+    if (result.already_recovered) {
       return {
         message: 'Session was already recovered',
         id,
         recovered: false,
-        alreadyRecovered: true
+        already_recovered: true
       }
     }
 
     // 2. Métricas asíncronas de recuperación
     if (result.session) {
-      metricsBatch.addMetric({
-        sellerId,
+      metrics_batch.addMetric({
+        seller_id,
         date: result.session.date,
         type: 'recovery',
-        category: isCart ? 'cart' : 'checkout',
-        amount: result.session.totalAmount,
-        sessionId: id
+        category: is_cart ? 'cart' : 'checkout',
+        amount: result.session.total_amount,
+        session_id: id
       })
     }
 
@@ -630,7 +640,7 @@ export async function handleMarkAsRecovered (
  */
 export async function shutdown (): Promise<void> {
   try {
-    await metricsBatch.forceFlush()
+    await metrics_batch.forceFlush()
     console.log('Service shutdown completed successfully')
   } catch (error) {
     console.error('Error during service shutdown:', error)
@@ -643,7 +653,7 @@ export async function shutdown (): Promise<void> {
 export async function healthCheck (): Promise<{
   status: 'healthy' | 'degraded'
   metrics: {
-    pendingMetrics: number
+    pending_metrics: number
   }
 }> {
   try {
@@ -653,7 +663,7 @@ export async function healthCheck (): Promise<{
     return {
       status: 'healthy',
       metrics: {
-        pendingMetrics: (metricsBatch as any).queue?.length || 0
+        pending_metrics: (metrics_batch as any).queue?.length || 0
       }
     }
   } catch (error) {
@@ -661,7 +671,7 @@ export async function healthCheck (): Promise<{
     return {
       status: 'degraded',
       metrics: {
-        pendingMetrics: (metricsBatch as any).queue?.length || 0
+        pending_metrics: (metrics_batch as any).queue?.length || 0
       }
     }
   }
@@ -671,118 +681,118 @@ export async function handleFlatBatchAbandonedCarts (
   payload: FlatBatchAbandonedCartsPayload
 ): Promise<{
   message: string
-  batchId: string
-  totalProcessed: number
-  totalCreated: number
-  totalUpdated: number
-  totalErrors: number
-  executionTime: string
-  sellerStats: Record<number, {
+  batch_id: string
+  total_processed: number
+  total_created: number
+  total_updated: number
+  total_errors: number
+  execution_time: string
+  seller_stats: Record<number, {
     processed: number
     created: number
     updated: number
     errors: number
   }>
 }> {
-  const startTime = Date.now()
+  const start_time = Date.now()
 
-  const sellerResults = [] // ✅ Para recopilar resultados con carritos nuevos
+  const seller_results: any[] = [] // ✅ Para recopilar resultados con carritos nuevos
 
-  console.log(`Processing flat batch ${payload.batchId}`, {
-    totalCarts: payload.totalCarts,
-    totalSellers: payload.totalSellers
+  console.log(`Processing flat batch ${payload.batch_id}`, {
+    total_carts: payload.total_carts,
+    total_sellers: payload.total_sellers
   })
 
-  const overallStats = {
-    totalProcessed: 0,
-    totalCreated: 0,
-    totalUpdated: 0,
-    totalErrors: 0
+  const overall_stats = {
+    total_processed: 0,
+    total_created: 0,
+    total_updated: 0,
+    total_errors: 0
   }
 
-  const sellerStats: Record<number, any> = {}
+  const seller_stats: Record<number, any> = {}
 
   try {
-    // ✅ Agrupar carts por sellerId automáticamente
-    const cartsBySeller = payload.carts.reduce((acc, cart) => {
-      if (!acc[cart.sellerId]) {
-        acc[cart.sellerId] = []
+    // ✅ Agrupar carts por seller_id automáticamente
+    const carts_by_seller = payload.carts.reduce((acc, cart) => {
+      if (!acc[cart.seller_id]) {
+        acc[cart.seller_id] = []
       }
-      acc[cart.sellerId].push(cart)
+      acc[cart.seller_id].push(cart)
       return acc
     }, {} as Record<number, typeof payload.carts>)
 
-    console.log(`Grouped carts for ${Object.keys(cartsBySeller).length} sellers`)
+    console.log(`Grouped carts for ${Object.keys(carts_by_seller).length} sellers`)
 
     // ✅ Procesar cada seller en paralelo (con límite de concurrencia)
-    const sellerIds = Object.keys(cartsBySeller).map(Number)
-    const concurrencyLimit = 5
-    const sellerChunks = chunkArray(sellerIds, concurrencyLimit)
+    const seller_ids = Object.keys(carts_by_seller).map(Number)
+    const concurrency_limit = 5
+    const seller_chunks = chunkArray(seller_ids, concurrency_limit)
 
-    for (const chunk of sellerChunks) {
-      const chunkPromises = chunk.map(async (sellerId) => {
-        const sellerCarts = cartsBySeller[sellerId]
-        return processFlatSellerCarts(sellerId, sellerCarts, payload.timestamp)
+    for (const chunk of seller_chunks) {
+      const chunk_promises = chunk.map(async (seller_id) => {
+        const seller_carts = carts_by_seller[seller_id]
+        return processFlatSellerCarts(seller_id, seller_carts, payload.timestamp)
       })
 
-      const chunkResults = await Promise.allSettled(chunkPromises)
+      const chunk_results = await Promise.allSettled(chunk_promises)
 
       // Agregar resultados
-      chunkResults.forEach((result, index) => {
-        const sellerId = chunk[index]
+      chunk_results.forEach((result, index) => {
+        const seller_id = chunk[index]
 
         if (result.status === 'fulfilled') {
           const stats = result.value
-          sellerStats[sellerId] = {
+          seller_stats[seller_id] = {
             processed: stats.processed,
             created: stats.created,
             updated: stats.updated,
             errors: stats.errors
           }
 
-          overallStats.totalProcessed += stats.processed
-          overallStats.totalCreated += stats.created
-          overallStats.totalUpdated += stats.updated
-          overallStats.totalErrors += stats.errors
+          overall_stats.total_processed += stats.processed
+          overall_stats.total_created += stats.created
+          overall_stats.total_updated += stats.updated
+          overall_stats.total_errors += stats.errors
 
           // ✅ AGREGAR: recopilar para métricas
-          sellerResults.push({
-            sellerId,
-            newCarts: stats.newCarts || [] // ✅ Fallback a array vacío
+          seller_results.push({
+            seller_id,
+            new_carts: stats.new_carts || [] // ✅ Fallback a array vacío
           })
         } else {
-          console.error(`Failed to process seller ${sellerId}:`, result.reason)
-          const sellerCartsCount = cartsBySeller[sellerId].length
+          console.error(`Failed to process seller ${seller_id}:`, result.reason)
+          const seller_carts_count = carts_by_seller[seller_id].length
 
-          sellerStats[sellerId] = {
+          seller_stats[seller_id] = {
             processed: 0,
             created: 0,
             updated: 0,
-            errors: sellerCartsCount
+            errors: seller_carts_count
           }
 
-          overallStats.totalErrors += sellerCartsCount
+          overall_stats.total_errors += seller_carts_count
         }
       })
     }
 
     // ✅ Procesar métricas para todos los sellers
-    await processFlatBatchMetrics(sellerResults, payload.timestamp)
+    await processFlatBatchMetrics(seller_results, payload.timestamp)
 
-    const executionTime = `${Date.now() - startTime}ms`
+    const execution_time = `${Date.now() - start_time}ms`
 
     console.log('Flat batch processing completed:', {
-      ...overallStats,
-      executionTime,
-      batchId: payload.batchId
+      ...overall_stats,
+      execution_time,
+      batch_id: payload.batch_id
     })
 
     return {
       message: 'Flat batch processed successfully',
-      batchId: payload.batchId,
-      ...overallStats,
-      executionTime,
-      sellerStats
+      batch_id: payload.batch_id,
+      ...overall_stats,
+      execution_time,
+      seller_stats
     }
   } catch (error) {
     console.error('Flat batch processing failed:', error)
@@ -795,7 +805,7 @@ export async function handleFlatBatchAbandonedCarts (
  */
 // ✅ MODIFICAR en abandoned.service.ts
 async function processFlatSellerCarts (
-  sellerId: number,
+  seller_id: number,
   carts: any[],
   timestamp: string
 ): Promise<{
@@ -803,37 +813,37 @@ async function processFlatSellerCarts (
   created: number
   updated: number
   errors: number
-  newCarts: any[] // ✅ AGREGAR: carritos que fueron creados (no actualizados)
+  new_carts: any[] // ✅ AGREGAR: carritos que fueron creados (no actualizados)
 }> {
-  console.log(`Processing seller ${sellerId} with ${carts.length} carts`)
+  console.log(`Processing seller ${seller_id} with ${carts.length} carts`)
 
   const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
-  const newCarts: any[] = [] // ✅ NUEVO: tracking de carritos nuevos
+  const new_carts: any[] = [] // ✅ NUEVO: tracking de carritos nuevos
 
   try {
     // Procesar en micro-batches
-    const microBatchSize = 500
-    const microBatches = chunkArray(carts, microBatchSize)
+    const micro_batch_size = 500
+    const micro_batches = chunkArray(carts, micro_batch_size)
 
-    for (const microBatch of microBatches) {
-      const microStats = await processMicroBatchCarts(sellerId, microBatch, timestamp)
+    for (const micro_batch of micro_batches) {
+      const micro_stats = await processMicroBatchCarts(seller_id, micro_batch, timestamp)
 
-      stats.processed += microStats.processed
-      stats.created += microStats.created
-      stats.updated += microStats.updated
-      stats.errors += microStats.errors
+      stats.processed += micro_stats.processed
+      stats.created += micro_stats.created
+      stats.updated += micro_stats.updated
+      stats.errors += micro_stats.errors
 
       // ✅ AGREGAR: identificar carritos nuevos basado en el resultado
-      if (microStats.createdCarts) {
-        newCarts.push(...microStats.createdCarts)
+      if (micro_stats.created_carts) {
+        new_carts.push(...micro_stats.created_carts)
       }
     }
 
-    return { ...stats, newCarts } // ✅ RETORNAR carritos nuevos
+    return { ...stats, new_carts } // ✅ RETORNAR carritos nuevos
   } catch (error) {
-    console.error(`Error processing seller ${sellerId}:`, error)
+    console.error(`Error processing seller ${seller_id}:`, error)
     stats.errors = carts.length
-    return { ...stats, newCarts: [] }
+    return { ...stats, new_carts: [] }
   }
 }
 
@@ -841,67 +851,68 @@ async function processFlatSellerCarts (
  * Procesa métricas para la estructura flat
  */
 async function processFlatBatchMetrics (
-  sellerResults: Array<{
-    sellerId: number
-    newCarts: any[]
+  seller_results: Array<{
+    seller_id: number
+    new_carts: any[]
   }>,
   timestamp: string
 ): Promise<void> {
   const date = generateDateKey(timestamp)
 
-  for (const { sellerId, newCarts } of sellerResults) {
-    if (newCarts.length === 0) {
-      console.log(`⏭️ No new carts for seller ${sellerId}, skipping metrics`)
+  for (const { seller_id, new_carts } of seller_results) {
+    if (new_carts.length === 0) {
+      console.log(`⏭️ No new carts for seller ${seller_id}, skipping metrics`)
       continue
     }
 
     try {
       // ✅ CAMBIO: Una sola métrica agregada en lugar de 500 individuales
-      const totalAmount = newCarts.reduce((sum, cart) => sum + cart.totalAmount, 0)
-      const cartCount = newCarts.length
+      const total_amount = new_carts.reduce((sum, cart) => sum + cart.total_amount, 0)
+      const cart_count = new_carts.length
 
-      const finalRoundedAmount = Math.round(totalAmount * 100) / 100
+      const final_rounded_amount = Math.round(total_amount * 100) / 100
 
       // ✅ Llamar directamente al repository con datos agregados
-      await repo.incrementBatchMetrics(sellerId, date, cartCount, finalRoundedAmount)
+      await repo.incrementBatchMetrics(seller_id, date, cart_count, final_rounded_amount)
 
-      console.log(`✅ Processed ${cartCount} NEW cart metrics for seller ${sellerId} in single operation`)
+      console.log(`✅ Processed ${cart_count} NEW cart metrics for seller ${seller_id} in single operation`)
     } catch (error) {
-      console.error(`❌ Error processing metrics for seller ${sellerId}:`, error)
+      console.error(`❌ Error processing metrics for seller ${seller_id}:`, error)
     }
   }
 }
+
 async function processFlatBatchMetrics2 (
-  sellerResults: Array<{
-    sellerId: number
-    newCarts: any[] // ✅ Solo los carritos nuevos
+  seller_results: Array<{
+    seller_id: number
+    new_carts: any[] // ✅ Solo los carritos nuevos
   }>,
   timestamp: string
 ): Promise<void> {
   const date = generateDateKey(timestamp)
 
-  for (const { sellerId, newCarts } of sellerResults) {
-    if (newCarts.length === 0) {
-      console.log(`⏭️ No new carts for seller ${sellerId}, skipping metrics`)
+  for (const { seller_id, new_carts } of seller_results) {
+    if (new_carts.length === 0) {
+      console.log(`⏭️ No new carts for seller ${seller_id}, skipping metrics`)
       continue
     }
 
     try {
       // ✅ Solo procesar métricas para carritos NUEVOS
-      for (const cart of newCarts) {
+      for (const cart of new_carts) {
         await repo.incrementMetricForAbandonment(
-          sellerId,
+          seller_id,
           {
-            totalAmount: cart.totalAmount,
+            total_amount: cart.total_amount,
             date
           } as any,
           'cart'
         )
       }
 
-      console.log(`✅ Processed ${newCarts.length} NEW cart metrics for seller ${sellerId}`)
+      console.log(`✅ Processed ${new_carts.length} NEW cart metrics for seller ${seller_id}`)
     } catch (error) {
-      console.error(`❌ Error processing metrics for seller ${sellerId}:`, error)
+      console.error(`❌ Error processing metrics for seller ${seller_id}:`, error)
     }
   }
 }
@@ -920,39 +931,39 @@ function chunkArray<T> (array: T[], size: number): T[][] {
 /**
  * Procesa un micro-batch de carritos (operación atómica)
  */
-// ✅ CORREGIR processMicroBatchCarts - falta declarar createdCarts
+// ✅ CORREGIR processMicroBatchCarts - falta declarar created_carts
 async function processMicroBatchCarts (
-  sellerId: number,
+  seller_id: number,
   carts: any[],
   timestamp: string
-): Promise<{ processed: number; created: number; updated: number; errors: number; createdCarts?: any[] }> {
+): Promise<{ processed: number; created: number; updated: number; errors: number; created_carts?: any[] }> {
   const stats = { processed: 0, created: 0, updated: 0, errors: 0 }
-  const createdCarts: any[] = [] // ✅ AGREGAR esta línea que falta
+  const created_carts: any[] = [] // ✅ AGREGAR esta línea que falta
 
   // Preparar operaciones bulk para MongoDB
-  const bulkOps = []
+  const bulk_ops = []
   const now = new Date()
 
   for (const cart of carts) {
     try {
       const session: AbandonedSession = {
-        sellerId,
-        sessionType: 'CART_ORIGINATED',
+        seller_id,
+        session_type: 'CART_ORIGINATED',
         platform: cart.platform,
         email: cart.email,
-        customerInfo: {
-          type: cart.userId ? 'registered' : 'guest',
+        customer_info: {
+          type: cart.user_id ? 'registered' : 'guest',
           email: cart.email,
-          fullName: cart.fullName || '',
-          ...(cart.userId && { userId: cart.userId })
+          full_name: cart.full_name || '',
+          ...(cart.user_id && { user_id: cart.user_id })
         },
         identifiers: {
-          cartId: cart.cartId,
-          checkoutUlid: null
+          cart_id: cart.cart_id,
+          checkout_ulid: null
         },
         products: cart.products,
-        productsCount: cart.products.length,
-        totalAmount: cart.totalAmount,
+        products_count: cart.products.length,
+        total_amount: cart.total_amount,
         currency: cart.currency,
         status: {
           cart: 'ABANDONED',
@@ -960,53 +971,44 @@ async function processMicroBatchCarts (
         },
         events: [{
           type: 'CART_ABANDONED_BATCH',
-          timestamp: cart.abandonedAt,
+          timestamp: cart.abandoned_at,
           details: {
-            batchProcessed: true,
-            originalTimestamp: cart.abandonedAt
+            batch_processed: true,
+            original_timestamp: cart.abandoned_at
           }
         }],
-        date: generateDateKey(cart.abandonedAt),
-        createdAt: now,
-        updatedAt: now,
-        cartUpdatedAt: new Date(cart.lastUpdated)
+        date: generateDateKey(cart.abandoned_at),
+        created_at: now,
+        updated_at: now,
+        cart_updated_at: new Date(cart.last_updated)
       }
 
-      // Usar upsert para evitar duplicados
-      /* bulkOps.push({
-        replaceOne: {
-          filter: { 'identifiers.cartId': cart.cartId },
-          replacement: session,
-          upsert: true
-        }
-      }) */
-
       // ✅ SOLUCIÓN: updateOne con $setOnInsert y $set
-      bulkOps.push({
+      bulk_ops.push({
         updateOne: {
-          filter: { 'identifiers.cartId': cart.cartId },
+          filter: { 'identifiers.cart_id': cart.cart_id },
           update: {
             $setOnInsert: {
               // ✅ Solo se asignan si es un documento NUEVO
-              sellerId: session.sellerId,
-              sessionType: session.sessionType,
+              seller_id: session.seller_id,
+              session_type: session.session_type,
               platform: session.platform,
               email: session.email,
-              customerInfo: session.customerInfo,
+              customer_info: session.customer_info,
               identifiers: session.identifiers,
               currency: session.currency,
               status: session.status,
               date: session.date,
-              createdAt: now,  // ✅ Solo se asigna en INSERT
+              created_at: now,  // ✅ Solo se asigna en INSERT
               events: session.events
             },
             $set: {
               // ✅ Siempre se actualizan (tanto INSERT como UPDATE)
               products: session.products,
-              productsCount: session.productsCount,
-              totalAmount: session.totalAmount,
-              updatedAt: now,  // ✅ Se actualiza siempre
-              cartUpdatedAt: session.cartUpdatedAt
+              products_count: session.products_count,
+              total_amount: session.total_amount,
+              updated_at: now,  // ✅ Se actualiza siempre
+              cart_updated_at: session.cart_updated_at
             }
           },
           upsert: true
@@ -1015,32 +1017,427 @@ async function processMicroBatchCarts (
 
       stats.processed++
     } catch (error) {
-      console.error(`Error preparing cart ${cart.cartId}:`, error)
+      console.error(`Error preparing cart ${cart.cart_id}:`, error)
       stats.errors++
     }
   }
 
   // Ejecutar bulk operation
-  if (bulkOps.length > 0) {
+  if (bulk_ops.length > 0) {
     try {
-      const result = await repo.executeBulkWrite(bulkOps)
+      const result = await repo.executeBulkWrite(bulk_ops)
       stats.created = result.upsertedCount
       stats.updated = result.modifiedCount
 
       // ✅ CORREGIR: identificar carritos nuevos
       if (result.upsertedIds) {
         Object.keys(result.upsertedIds).forEach(index => {
-          const cartIndex = parseInt(index)
-          if (carts[cartIndex]) {
-            createdCarts.push(carts[cartIndex])
+          const cart_index = parseInt(index)
+          if (carts[cart_index]) {
+            created_carts.push(carts[cart_index])
           }
         })
       }
     } catch (error) {
       console.error('Bulk write error:', error)
-      stats.errors += bulkOps.length
+      stats.errors += bulk_ops.length
     }
   }
 
-  return { ...stats, createdCarts } // ✅ RETORNAR createdCarts
+  return { ...stats, created_carts } // ✅ RETORNAR created_carts
+}
+
+// ==========================================
+// ADMIN SERVICE METHODS
+// ==========================================
+
+/**
+ * Maneja la lista de sesiones abandonadas para admin
+ */
+export async function handleListAbandonedSessions (
+  seller_id: number,
+  query: AdminListAbandonedQuery
+): Promise<AdminListResponse> {
+  try {
+    // 1. Parsear criterios de ordenamiento
+    const sort_criteria = parseSortCriteria(query.sort_by || '')
+
+    // 2. Calcular rango de fechas
+    const date_range = calculateDateRange(query.interval || '30days')
+
+    // 3. Parsear términos de búsqueda
+    const search_terms = parseSearchTerms(query.search || '')
+
+    // 4. Preparar parámetros
+    const params = {
+      seller_id,
+      page: query.page || 1,
+      size: Math.min(query.size || 20, 100), // Máximo 100
+      sort_criteria,
+      date_range,
+      search_terms,
+      status_filter: query.status
+    }
+
+    // 5. Obtener datos del repository
+    const result = await repo.getAbandonedSessionsForAdmin(params)
+
+    // 6. Transformar a formato de respuesta
+    const admin_items = result.sessions.map(session => transformToAdminItem(session))
+
+    // 7. Construir respuesta
+    const response: AdminListResponse = {
+      metadata: {
+        success: true,
+        message: 'Abandoned checkouts retrieved successfully',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        execution_time: '0ms' // Se actualizará por el wrapper
+      },
+      data: admin_items,
+      pagination: {
+        page: params.page,
+        size: params.size,
+        total_elements: result.total_count,
+        total_pages: result.total_pages
+      }
+    }
+
+    return response
+  } catch (error) {
+    console.error('Error in handleListAbandonedSessions:', error)
+    throw new Error(`Failed to retrieve abandoned sessions: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Parsea criterios de ordenamiento desde query string
+ * Ejemplo: "item_count:asc,total_amount:desc"
+ */
+function parseSortCriteria (sort_by: string): SortCriteria[] {
+  if (!sort_by.trim()) {
+    return [{ field: 'created_at', direction: 'desc' }] // Default
+  }
+
+  // ✅ Campos válidos actualizados a snake_case
+  const valid_fields = ['item_count', 'total_amount', 'created_at', 'status']
+  const criteria: SortCriteria[] = []
+
+  const parts = sort_by.split(',')
+
+  for (const part of parts) {
+    const [field, direction] = part.trim().split(':')
+
+    // ✅ También aceptar versiones en camelCase para retrocompatibilidad
+    let normalized_field = field
+    switch (field) {
+      case 'itemCount':
+        normalized_field = 'item_count'
+        break
+      case 'totalAmount':
+        normalized_field = 'total_amount'
+        break
+      case 'createdAt':
+        normalized_field = 'created_at'
+        break
+    }
+
+    if (valid_fields.includes(normalized_field) && ['asc', 'desc'].includes(direction)) {
+      criteria.push({
+        field: normalized_field,
+        direction: direction as 'asc' | 'desc'
+      })
+    }
+  }
+
+  // Si no hay criterios válidos, usar default
+  if (criteria.length === 0) {
+    criteria.push({ field: 'created_at', direction: 'desc' })
+  }
+
+  return criteria
+}
+/**
+ * Calcula rango de fechas basado en intervalo
+ */
+function calculateDateRange (interval: 'today' | '7days' | '30days'): DateRange {
+  const now = new Date()
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  let start: Date
+
+  switch (interval) {
+    case 'today':
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+      break
+    case '7days':
+      start = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000))
+      start.setHours(0, 0, 0, 0)
+      break
+    case '30days':
+    default:
+      start = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000))
+      start.setHours(0, 0, 0, 0)
+      break
+  }
+
+  return { start, end }
+}
+
+/**
+ * Parsea términos de búsqueda desde query string
+ * Ejemplo: "angel,producto" -> ["angel", "producto"]
+ */
+function parseSearchTerms (search: string): string[] {
+  if (!search.trim()) return []
+
+  return search
+    .split(',')
+    .map(term => term.trim())
+    .filter(term => term.length > 0)
+}
+
+/**
+ * Transforma sesión de BD a formato admin (snake_case)
+ */
+function transformToAdminItem (session: any): AdminAbandonedItem {
+  // Determinar el ID principal
+  const checkout_id = session.identifiers?.checkout_ulid || session.identifiers?.cart_id || ''
+
+  // Determinar el tipo
+  const type = session.session_type === 'CART_ORIGINATED' ? 'cart' : 'purchase'
+
+  // Determinar status
+  const cart_status = session.status?.cart
+  const checkout_status = session.status?.checkout
+  const is_recovered = cart_status === 'RECOVERED' || checkout_status === 'RECOVERED'
+
+  // Extraer información del cliente
+  const customer_info = session.customer_info || {}
+  const customer_name = customer_info.full_name || customer_info.name || customer_info.email || ''
+  const email = customer_info.email || session.email || ''
+
+  // Transformar productos con estructura attributes
+  const products: AdminProductItem[] = (session.products || []).map((product: any) => {
+    // Construir attributes object con solo valores no nulos/vacíos (SIN collection)
+    const attributes: { [key: string]: any } = {}
+
+    if (product.attributes?.size) attributes.size = product.attributes.size
+    if (product.attributes?.color) attributes.color = product.attributes.color
+
+    // Agregar otros attributes si existen (EXCLUYENDO collection)
+    if (product.attributes && typeof product.attributes === 'object') {
+      Object.keys(product.attributes).forEach(key => {
+        if (key !== 'size' && key !== 'color' && key !== 'collection' && product.attributes[key]) {
+          attributes[key] = product.attributes[key]
+        }
+      })
+    }
+
+    return {
+      item_id: product.product_id || product.sku || product.id_t1 || '',
+      name: product.name || '',
+      quantity: product.quantity || 1,
+      price: product.unit_price || 0,
+      shipping: null, // No está en nuestro modelo actual
+      total: product.total_price || null,
+      collection: product.collection || null, // ✅ FUERA de attributes
+      attributes,
+      image_url: product.image_url || ''
+    }
+  })
+
+  // Generar timestamp
+  const created_timestamp = session.created_at
+    ? Math.floor(new Date(session.created_at).getTime() / 1000)
+    : Math.floor(Date.now() / 1000)
+
+  const recovered_timestamp = is_recovered && session.updated_at
+    ? Math.floor(new Date(session.updated_at).getTime() / 1000)
+    : 0
+
+  return {
+    seller_id: session.seller_id,
+    id: session._id?.toString() || '',
+    checkout_id,
+    customer: customer_name,
+    name: customer_name,
+    phone: customer_info.phone || '',
+    email,
+    total_amount: session.total_amount || 0,
+    timestamp: created_timestamp,
+    recovered_at: recovered_timestamp,
+    status: is_recovered ? 'recovered' : 'not_recovered',
+    type,
+    email_status: session.email_stats?.status || 'not_sent',
+    item_count: session.products_count || products.length,
+    details: {
+      products
+    }
+  }
+}
+// ==========================================
+// ADMIN STATS SERVICE METHODS
+// ==========================================
+
+/**
+ * Maneja la obtención de estadísticas de abandonados
+ */
+export async function handleGetAbandonedStats (
+  seller_id: number,
+  query: AdminStatsQuery
+): Promise<AdminStatsResponse> {
+  try {
+    const interval = query.interval || 'today'
+
+    // 1. Calcular rangos de fechas (actual y anterior)
+    const { current_range, previous_range } = calculateStatsDateRanges(interval)
+
+    // 2. Obtener métricas para ambos periodos
+    const [current_metrics, previous_metrics] = await Promise.all([
+      repo.getMetricsForPeriod(seller_id, current_range),
+      repo.getMetricsForPeriod(seller_id, previous_range)
+    ])
+
+    // 3. Calcular estadísticas comparativas
+    const stats = calculateComparativeStats(current_metrics, previous_metrics)
+
+    // 4. Construir respuesta
+    const response: AdminStatsResponse = {
+      metadata: {
+        success: true,
+        message: 'Abandoned checkout statistics retrieved',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        execution_time: '0ms' // Se actualizará por el wrapper
+      },
+      data: stats,
+      pagination: null
+    }
+
+    return response
+  } catch (error) {
+    console.error('Error in handleGetAbandonedStats:', error)
+    throw new Error(`Failed to retrieve abandoned stats: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Calcula rangos de fechas para periodo actual y anterior
+ */
+function calculateStatsDateRanges (interval: 'today' | '7days' | '30days'): {
+  current_range: DateRange
+  previous_range: DateRange
+} {
+  const now = new Date()
+  const end_current = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  let start_current: Date
+  let days_back: number
+
+  switch (interval) {
+    case 'today':
+      start_current = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+      days_back = 1
+      break
+    case '7days':
+      start_current = new Date(now.getTime() - (6 * 24 * 60 * 60 * 1000)) // 6 días atrás + hoy = 7 días
+      start_current.setHours(0, 0, 0, 0)
+      days_back = 7
+      break
+    case '30days':
+    default:
+      start_current = new Date(now.getTime() - (29 * 24 * 60 * 60 * 1000)) // 29 días atrás + hoy = 30 días
+      start_current.setHours(0, 0, 0, 0)
+      days_back = 30
+      break
+  }
+
+  // Periodo anterior: mismo número de días hacia atrás
+  const end_previous = new Date(start_current.getTime() - (24 * 60 * 60 * 1000))
+  end_previous.setHours(23, 59, 59, 999)
+
+  const start_previous = new Date(end_previous.getTime() - ((days_back - 1) * 24 * 60 * 60 * 1000))
+  start_previous.setHours(0, 0, 0, 0)
+
+  return {
+    current_range: { start: start_current, end: end_current },
+    previous_range: { start: start_previous, end: end_previous }
+  }
+}
+
+/**
+ * Calcula estadísticas comparativas entre periodos
+ */
+function calculateComparativeStats (
+  current: MetricsData,
+  previous: MetricsData
+): {
+    recovered: StatsMetric
+    pending_amount: StatsMetric
+    pending: StatsMetric
+    recovered_amount: StatsMetric
+  } {
+  // Totales actuales
+  const current_recovered = (current.cart.recovered || 0) + (current.checkout.recovered || 0)
+  const current_pending = current.cart.abandoned + current.checkout.abandoned
+  const current_recovered_amount = (current.cart.recovered_amount || 0) + (current.checkout.recovered_amount || 0)
+  const current_pending_amount = current.cart.abandoned_amount + current.checkout.abandoned_amount
+
+  // Totales anteriores
+  const previous_recovered = (previous.cart.recovered || 0) + (previous.checkout.recovered || 0)
+  const previous_pending = previous.cart.abandoned + previous.checkout.abandoned
+  const previous_recovered_amount = (previous.cart.recovered_amount || 0) + (previous.checkout.recovered_amount || 0)
+  const previous_pending_amount = previous.cart.abandoned_amount + previous.checkout.abandoned_amount
+
+  return {
+    recovered: calculateMetric(
+      current.cart.recovered || 0,
+      current.checkout.recovered || 0,
+      current_recovered,
+      previous_recovered
+    ),
+    pending: calculateMetric(
+      current.cart.abandoned,
+      current.checkout.abandoned,
+      current_pending,
+      previous_pending
+    ),
+    recovered_amount: calculateMetric(
+      current.cart.recovered_amount || 0,
+      current.checkout.recovered_amount || 0,
+      current_recovered_amount,
+      previous_recovered_amount
+    ),
+    pending_amount: calculateMetric(
+      current.cart.abandoned_amount,
+      current.checkout.abandoned_amount,
+      current_pending_amount,
+      previous_pending_amount
+    )
+  }
+}
+
+/**
+ * Calcula métrica individual con porcentajes
+ */
+function calculateMetric (
+  cart_value: number,
+  checkout_value: number,
+  total_current: number,
+  total_previous: number
+): StatsMetric {
+  const cart_percentage = total_current > 0 ? (cart_value / total_current) * 100 : 0
+  const purchase_percentage = total_current > 0 ? (checkout_value / total_current) * 100 : 0
+
+  let change_percentage = 0
+  if (total_previous > 0) {
+    change_percentage = ((total_current - total_previous) / total_previous) * 100
+  } else if (total_current > 0) {
+    change_percentage = 100 // 100% de incremento si antes era 0
+  }
+
+  return {
+    cart_percentage: Math.round(cart_percentage * 100) / 100,
+    change_percentage: Math.round(change_percentage * 100) / 100,
+    purchase_percentage: Math.round(purchase_percentage * 100) / 100,
+    total: total_current,
+    previous_total: total_previous
+  }
 }

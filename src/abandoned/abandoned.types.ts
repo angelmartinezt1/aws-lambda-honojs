@@ -1,16 +1,20 @@
 export interface CreateCartAbandonedPayload {
   platform: string
-  sessionType: 'CART_ORIGINATED'
-  customerInfo: {
-    userId: number
+  session_type: 'CART_ORIGINATED'
+  customer_info: {
+    user_id: number
     email: string
-    fullName: string
+    full_name: string
+    marketing?: {
+      email?: { subscribed: boolean }
+      sms?: { subscribed: boolean }
+    }
   }
   products: any[]
-  productsCount: number
-  totalAmount: number
+  products_count: number
+  total_amount: number
   currency: string
-  identifiers: { cartId: string }
+  identifiers: { cart_id: string }
   event: {
     type: 'CART_ABANDONED'
     timestamp: string
@@ -20,8 +24,8 @@ export interface CreateCartAbandonedPayload {
 
 export interface UpdateCartPayload {
   products: any[]
-  productsCount: number
-  totalAmount: number
+  products_count: number
+  total_amount: number
   event: {
     type: 'CART_UPDATED'
     timestamp: string
@@ -31,16 +35,17 @@ export interface UpdateCartPayload {
 
 export interface CheckoutAbandonedPayload {
   platform: string
-  sessionType: 'CHECKOUT_DIRECT'
-  customerInfo: {
+  session_type: 'CHECKOUT_DIRECT'
+  customer_info: {
     type: 'guest'
     email: string
   }
-  totalAmount: number
+  total_amount: number
   currency: string
+  products: any[]
   identifiers: {
-    cartId: null
-    checkoutUlid: string
+    cart_id: null
+    checkout_ulid: string
   }
   event: {
     type: 'CHECKOUT_ABANDONED'
@@ -60,28 +65,159 @@ export interface MarkAsRecoveredPayload {
 }
 
 export interface FlatBatchAbandonedCartsPayload {
-  batchId: string
+  batch_id: string
   timestamp: string
-  totalCarts: number
-  totalSellers: number
+  total_carts: number
+  total_sellers: number
   carts: {
-    sellerId: number              // ✅ Cada cart tiene su sellerId
-    cartId: string
-    userId?: number
+    seller_id: number
+    cart_id: string
+    user_id?: number
     email: string
-    fullName?: string
+    full_name?: string
     phone?: string
     products: any[]
-    totalAmount: number
+    total_amount: number
     currency: string
     platform: string
-    abandonedAt: string
-    lastUpdated: string
-    shippingAddress?: {
+    abandoned_at: string
+    last_updated: string
+    shipping_address?: {
       country: string
       state: string
       city: string
-      zipCode: string
+      zip_code: string
     }
   }[]
+}
+
+// ==========================================
+// ADMIN TYPES (SNAKE_CASE)
+// ==========================================
+
+export interface AdminListAbandonedQuery {
+  page?: number
+  size?: number
+  sort_by?: string  // "field:direction,field2:direction"
+  interval?: 'today' | '7days' | '30days'
+  search?: string   // "term1,term2"
+  status?: 'ABANDONED' | 'RECOVERED' | 'ACTIVE'
+}
+
+export interface AdminAbandonedItem {
+  seller_id: number
+  id: string
+  checkout_id: string
+  customer: string
+  name: string
+  phone: string
+  email: string
+  total_amount: number
+  timestamp: number
+  recovered_at: number
+  status: 'recovered' | 'not_recovered'
+  type: 'cart' | 'purchase'
+  email_status: 'sent' | 'not_sent' | 'failed'
+  item_count: number
+  details: {
+    products: AdminProductItem[]
+  }
+}
+
+export interface AdminProductItem {
+  item_id: string
+  name: string
+  quantity: number
+  price: number
+  shipping: number | null
+  total: number | null
+  collection: string | null
+  attributes: {
+    size?: string
+    color?: string
+    [key: string]: any
+  }
+  image_url: string
+}
+
+export interface AdminListResponse {
+  metadata: {
+    success: boolean
+    message: string
+    timestamp: string
+    execution_time: string
+  }
+  data: AdminAbandonedItem[]
+  pagination: {
+    page: number
+    size: number
+    total_elements: number
+    total_pages: number
+  }
+}
+
+export interface SortCriteria {
+  field: string
+  direction: 'asc' | 'desc'
+}
+
+export interface DateRange {
+  start: Date
+  end: Date
+}
+
+// ==========================================
+// ADMIN STATS TYPES
+// ==========================================
+
+export interface AdminStatsQuery {
+  interval?: 'today' | '7days' | '30days'
+}
+
+export interface StatsMetric {
+  cart_percentage: number
+  change_percentage: number
+  purchase_percentage: number
+  total: number
+  previous_total: number
+}
+
+export interface AdminStatsResponse {
+  metadata: {
+    success: boolean
+    message: string
+    timestamp: string
+    execution_time: string
+  }
+  data: {
+    recovered: StatsMetric
+    pending_amount: StatsMetric
+    pending: StatsMetric
+    recovered_amount: StatsMetric
+  }
+  pagination: null
+}
+
+export interface MetricsData {
+  cart: {
+    abandoned: number
+    abandoned_amount: number
+    recovered?: number
+    recovered_amount?: number
+  }
+  checkout: {
+    abandoned: number
+    abandoned_amount: number
+    recovered?: number
+    recovered_amount?: number
+  }
+  totals: {
+    total_abandoned_amount: number
+    total_recovered_amount?: number
+  }
+}
+
+export interface PeriodComparison {
+  current: MetricsData
+  previous: MetricsData
 }

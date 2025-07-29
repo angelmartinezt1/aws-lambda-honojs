@@ -1,5 +1,6 @@
 import { connectToDatabase } from '../config/mongo.js'
 import { AbandonedEvent, AbandonedSession } from './abandoned.model.js'
+import { DateRange, MetricsData, SortCriteria } from './abandoned.types.js'
 
 const SESSION_COLLECTION = 'abandoned_sessions'
 const METRICS_COLLECTION = 'abandoned_metrics'
@@ -9,74 +10,74 @@ const METRICS_COLLECTION = 'abandoned_metrics'
 //
 export async function insertSession (session: AbandonedSession) {
   const db = await connectToDatabase()
-  await db.collection(SESSION_COLLECTION).insertOne(session)
+  await db.collection<AbandonedSession>(SESSION_COLLECTION).insertOne(session)
 }
 
 //
-// Actualizar sesión por cartId
+// Actualizar sesión por cart_id
 //
-export async function updateSessionByCartId (cartId: string, update: Partial<AbandonedSession>) {
+export async function updateSessionByCartId (cart_id: string, update: Partial<AbandonedSession>) {
   const db = await connectToDatabase()
   return db.collection(SESSION_COLLECTION).updateOne(
-    { 'identifiers.cartId': cartId },
+    { 'identifiers.cart_id': cart_id },
     { $set: update }
   )
 }
 
 //
-// Actualizar sesión por checkoutUlid
+// Actualizar sesión por checkout_ulid
 //
-export async function updateSessionByCheckoutUlid (checkoutUlid: string, update: Partial<AbandonedSession>) {
+export async function updateSessionByCheckoutUlid (checkout_ulid: string, update: Partial<AbandonedSession>) {
   const db = await connectToDatabase()
   return db.collection(SESSION_COLLECTION).updateOne(
-    { 'identifiers.checkoutUlid': checkoutUlid },
+    { 'identifiers.checkout_ulid': checkout_ulid },
     { $set: update }
   )
 }
 
 //
-// Agregar evento a sesión por cartId
+// Agregar evento a sesión por cart_id
 //
-export async function appendEventByCartId (cartId: string, event: AbandonedEvent) {
+export async function appendEventByCartId (cart_id: string, event: AbandonedEvent) {
   const db = await connectToDatabase()
   return db.collection(SESSION_COLLECTION).updateOne(
-    { 'identifiers.cartId': cartId },
+    { 'identifiers.cart_id': cart_id },
     {
       $push: { events: event },
-      $set: { updatedAt: new Date() }
-    }
+      $set: { updated_at: new Date() }
+    } as any
   )
 }
 
 //
-// Agregar evento a sesión por checkoutUlid
+// Agregar evento a sesión por checkout_ulid
 //
 export async function appendEventByCheckoutUlid (
-  checkoutUlid: string,
-  newEvent: AbandonedEvent
+  checkout_ulid: string,
+  new_event: AbandonedEvent
 ) {
   const db = await connectToDatabase()
   const collection = db.collection(SESSION_COLLECTION)
 
-  const session = await collection.findOne({ 'identifiers.checkoutUlid': checkoutUlid })
+  const session = await collection.findOne({ 'identifiers.checkout_ulid': checkout_ulid })
   if (!session) return
 
-  const alreadyExists = session.events?.some(
+  const already_exists = session.events?.some(
     (e: AbandonedEvent) =>
-      e.type === newEvent.type &&
-      new Date(e.timestamp).getTime() === new Date(newEvent.timestamp).getTime()
+      e.type === new_event.type &&
+      new Date(e.timestamp).getTime() === new Date(new_event.timestamp).getTime()
   )
 
-  if (alreadyExists) {
+  if (already_exists) {
     return { matched: true, added: false }
   }
 
   await collection.updateOne(
-    { 'identifiers.checkoutUlid': checkoutUlid },
+    { 'identifiers.checkout_ulid': checkout_ulid },
     {
-      $push: { events: newEvent },
-      $set: { updatedAt: new Date() }
-    }
+      $push: { events: new_event },
+      $set: { updated_at: new Date() }
+    } as any
   )
 
   return { matched: true, added: true }
@@ -86,23 +87,23 @@ export async function appendEventByCheckoutUlid (
 // Incrementar métricas de abandono (cart o checkout)
 //
 export async function incrementMetricForAbandonment (
-  sellerId: number,
+  seller_id: number,
   session: AbandonedSession,
   type: 'cart' | 'checkout'
 ) {
   const db = await connectToDatabase()
 
-  const incFields: Record<string, number> = {
+  const inc_fields: Record<string, number> = {
     [`${type}.abandoned`]: 1,
-    [`${type}.abandonedAmount`]: session.totalAmount,
-    'totals.totalAbandonedAmount': session.totalAmount
+    [`${type}.abandoned_amount`]: session.total_amount,
+    'totals.total_abandoned_amount': session.total_amount
   }
 
   return db.collection(METRICS_COLLECTION).updateOne(
-    { sellerId, date: session.date },
+    { seller_id, date: session.date },
     {
-      $inc: incFields,
-      $set: { lastUpdatedAt: new Date() }
+      $inc: inc_fields,
+      $set: { last_updated_at: new Date() }
     },
     { upsert: true }
   )
@@ -112,73 +113,73 @@ export async function incrementMetricForAbandonment (
 // Incrementar métricas de recuperación (cart o checkout)
 //
 export async function incrementMetricForRecovery (
-  sellerId: number,
+  seller_id: number,
   type: 'cart' | 'checkout',
-  sessionId: string
+  session_id: string
 ) {
   const db = await connectToDatabase()
-  const queryKey = type === 'cart' ? 'identifiers.cartId' : 'identifiers.checkoutUlid'
+  const query_key = type === 'cart' ? 'identifiers.cart_id' : 'identifiers.checkout_ulid'
 
-  const session = await db.collection<AbandonedSession>(SESSION_COLLECTION).findOne({ [queryKey]: sessionId })
+  const session = await db.collection<AbandonedSession>(SESSION_COLLECTION).findOne({ [query_key]: session_id })
 
   if (!session) return
 
-  const amount = session.totalAmount
+  const amount = session.total_amount
 
-  const incFields: Record<string, number> = {
+  const inc_fields: Record<string, number> = {
     [`${type}.recovered`]: 1,
-    [`${type}.recoveredAmount`]: amount,
+    [`${type}.recovered_amount`]: amount,
     [`${type}.abandoned`]: -1,
-    [`${type}.abandonedAmount`]: -amount,
-    'totals.totalRecoveredAmount': amount,
-    'totals.totalAbandonedAmount': -amount
+    [`${type}.abandoned_amount`]: -amount,
+    'totals.total_recovered_amount': amount,
+    'totals.total_abandoned_amount': -amount
   }
 
   return db.collection(METRICS_COLLECTION).updateOne(
-    { sellerId, date: session.date },
+    { seller_id, date: session.date },
     {
-      $inc: incFields,
-      $set: { lastUpdatedAt: new Date() }
+      $inc: inc_fields,
+      $set: { last_updated_at: new Date() }
     },
     { upsert: true }
   )
 }
 
-export async function findSessionByCartId (cartId: string) {
+export async function findSessionByCartId (cart_id: string) {
   const db = await connectToDatabase()
-  return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.cartId': cartId })
+  return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.cart_id': cart_id })
 }
 
-export async function hasEventByCartId (cartId: string, eventType: string): Promise<boolean> {
+export async function hasEventByCartId (cart_id: string, event_type: string): Promise<boolean> {
   const db = await connectToDatabase()
   const doc = await db.collection(SESSION_COLLECTION).findOne({
-    'identifiers.cartId': cartId,
-    'events.type': eventType
+    'identifiers.cart_id': cart_id,
+    'events.type': event_type
   })
   return !!doc
 }
 
-export async function hasEventByCheckoutUlid (checkoutUlid: string, eventType: string): Promise<boolean> {
+export async function hasEventByCheckoutUlid (checkout_ulid: string, event_type: string): Promise<boolean> {
   const db = await connectToDatabase()
   const doc = await db.collection(SESSION_COLLECTION).findOne({
-    'identifiers.checkoutUlid': checkoutUlid,
-    'events.type': eventType
+    'identifiers.checkout_ulid': checkout_ulid,
+    'events.type': event_type
   })
   return !!doc
 }
 
-export async function findSessionByCheckoutUlid (checkoutUlid: string) {
+export async function findSessionByCheckoutUlid (checkout_ulid: string) {
   const db = await connectToDatabase()
-  return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.checkoutUlid': checkoutUlid })
+  return db.collection(SESSION_COLLECTION).findOne({ 'identifiers.checkout_ulid': checkout_ulid })
 }
 
 interface MetricOperation {
-  sellerId: number
+  seller_id: number
   date: string
   type: 'abandonment' | 'recovery'
   category: 'cart' | 'checkout'
   amount: number
-  sessionId?: string
+  session_id?: string
 }
 
 export async function processBatchMetrics (operations: MetricOperation[]): Promise<void> {
@@ -186,12 +187,12 @@ export async function processBatchMetrics (operations: MetricOperation[]): Promi
 
   const db = await connectToDatabase()
 
-  // Agrupar operaciones por sellerId y fecha
-  const groupedOps = operations.reduce((acc, op) => {
-    const key = `${op.sellerId}-${op.date}`
+  // Agrupar operaciones por seller_id y fecha
+  const grouped_ops = operations.reduce((acc, op) => {
+    const key = `${op.seller_id}-${op.date}`
     if (!acc[key]) {
       acc[key] = {
-        sellerId: op.sellerId,
+        seller_id: op.seller_id,
         date: op.date,
         increments: {}
       }
@@ -201,34 +202,34 @@ export async function processBatchMetrics (operations: MetricOperation[]): Promi
 
     if (type === 'abandonment') {
       acc[key].increments[`${category}.abandoned`] = (acc[key].increments[`${category}.abandoned`] || 0) + 1
-      acc[key].increments[`${category}.abandonedAmount`] = (acc[key].increments[`${category}.abandonedAmount`] || 0) + amount
-      acc[key].increments['totals.totalAbandonedAmount'] = (acc[key].increments['totals.totalAbandonedAmount'] || 0) + amount
+      acc[key].increments[`${category}.abandoned_amount`] = (acc[key].increments[`${category}.abandoned_amount`] || 0) + amount
+      acc[key].increments['totals.total_abandoned_amount'] = (acc[key].increments['totals.total_abandoned_amount'] || 0) + amount
     } else if (type === 'recovery') {
       acc[key].increments[`${category}.recovered`] = (acc[key].increments[`${category}.recovered`] || 0) + 1
-      acc[key].increments[`${category}.recoveredAmount`] = (acc[key].increments[`${category}.recoveredAmount`] || 0) + amount
+      acc[key].increments[`${category}.recovered_amount`] = (acc[key].increments[`${category}.recovered_amount`] || 0) + amount
       acc[key].increments[`${category}.abandoned`] = (acc[key].increments[`${category}.abandoned`] || 0) - 1
-      acc[key].increments[`${category}.abandonedAmount`] = (acc[key].increments[`${category}.abandonedAmount`] || 0) - amount
-      acc[key].increments['totals.totalRecoveredAmount'] = (acc[key].increments['totals.totalRecoveredAmount'] || 0) + amount
-      acc[key].increments['totals.totalAbandonedAmount'] = (acc[key].increments['totals.totalAbandonedAmount'] || 0) - amount
+      acc[key].increments[`${category}.abandoned_amount`] = (acc[key].increments[`${category}.abandoned_amount`] || 0) - amount
+      acc[key].increments['totals.total_recovered_amount'] = (acc[key].increments['totals.total_recovered_amount'] || 0) + amount
+      acc[key].increments['totals.total_abandoned_amount'] = (acc[key].increments['totals.total_abandoned_amount'] || 0) - amount
     }
 
     return acc
-  }, {} as Record<string, { sellerId: number, date: string, increments: Record<string, number> }>)
+  }, {} as Record<string, { seller_id: number, date: string, increments: Record<string, number> }>)
 
   // Bulk write
-  const bulkOps = Object.values(groupedOps).map(({ sellerId, date, increments }) => ({
+  const bulk_ops = Object.values(grouped_ops).map(({ seller_id, date, increments }) => ({
     updateOne: {
-      filter: { sellerId, date },
+      filter: { seller_id, date },
       update: {
         $inc: increments,
-        $set: { lastUpdatedAt: new Date() }
+        $set: { last_updated_at: new Date() }
       },
       upsert: true
     }
   }))
 
-  if (bulkOps.length > 0) {
-    await db.collection(METRICS_COLLECTION).bulkWrite(bulkOps, { ordered: false })
+  if (bulk_ops.length > 0) {
+    await db.collection(METRICS_COLLECTION).bulkWrite(bulk_ops, { ordered: false })
   }
 }
 
@@ -244,25 +245,286 @@ export async function executeBulkWrite (operations: any[]) {
 }
 
 export async function incrementBatchMetrics (
-  sellerId: number,
+  seller_id: number,
   date: string,
-  cartCount: number,
-  totalAmount: number
+  cart_count: number,
+  total_amount: number
 ): Promise<void> {
   const db = await connectToDatabase()
 
   await db.collection(METRICS_COLLECTION).updateOne(
-    { sellerId, date },
+    { seller_id, date },
     {
       $inc: {
-        'cart.abandoned': cartCount,           // ✅ Incrementar por el total
-        'cart.abandonedAmount': totalAmount,   // ✅ Sumar todos los montos
-        'totals.totalAbandonedAmount': totalAmount
+        'cart.abandoned': cart_count,           // ✅ Incrementar por el total
+        'cart.abandoned_amount': total_amount,   // ✅ Sumar todos los montos
+        'totals.total_abandoned_amount': total_amount
       },
       $set: {
-        lastUpdatedAt: new Date()
+        last_updated_at: new Date()
       }
     },
     { upsert: true }
   )
+}
+
+// ==========================================
+// ADMIN REPOSITORY METHODS
+// ==========================================
+
+export interface AdminListParams {
+  seller_id: number
+  page: number
+  size: number
+  sort_criteria: SortCriteria[]
+  date_range: DateRange
+  search_terms?: string[]
+  status_filter?: string
+}
+
+/**
+ * Obtiene lista paginada de sesiones abandonadas para admin
+ */
+export async function getAbandonedSessionsForAdmin (params: AdminListParams) {
+  const db = await connectToDatabase()
+  const collection = db.collection(SESSION_COLLECTION)
+
+  // Construir filtros
+  const filters: any = {
+    seller_id: params.seller_id,
+    created_at: {
+      $gte: params.date_range.start,
+      $lte: params.date_range.end
+    }
+  }
+
+  // Filtro por status
+  if (params.status_filter) {
+    if (params.status_filter === 'RECOVERED') {
+      filters.$or = [
+        { 'status.cart': 'RECOVERED' },
+        { 'status.checkout': 'RECOVERED' }
+      ]
+    } else if (params.status_filter === 'ABANDONED') {
+      filters.$or = [
+        { 'status.cart': 'ABANDONED' },
+        { 'status.checkout': 'ABANDONED' }
+      ]
+    } else if (params.status_filter === 'ACTIVE') {
+      filters.$or = [
+        { 'status.cart': 'ACTIVE' },
+        { 'status.checkout': 'ACTIVE' }
+      ]
+    }
+  }
+
+  // Filtro de búsqueda
+  if (params.search_terms && params.search_terms.length > 0) {
+    const search_conditions = params.search_terms.map(term => ({
+      $or: [
+        { email: { $regex: term, $options: 'i' } },
+        { 'customer_info.full_name': { $regex: term, $options: 'i' } },
+        { 'customer_info.email': { $regex: term, $options: 'i' } },
+        { 'products.name': { $regex: term, $options: 'i' } },
+        { 'identifiers.cart_id': { $regex: term, $options: 'i' } },
+        { 'identifiers.checkout_ulid': { $regex: term, $options: 'i' } }
+      ]
+    }))
+
+    filters.$and = search_conditions
+  }
+
+  // Construir sort
+  const sort_obj: any = {}
+  for (const criteria of params.sort_criteria) {
+    const direction = criteria.direction === 'desc' ? -1 : 1
+
+    switch (criteria.field) {
+      case 'item_count':
+        sort_obj.products_count = direction
+        break
+      case 'total_amount':
+        sort_obj.total_amount = direction
+        break
+      case 'created_at':
+        sort_obj.created_at = direction
+        break
+      case 'status':
+        sort_obj['status.cart'] = direction
+        sort_obj['status.checkout'] = direction
+        break
+      default:
+        sort_obj.created_at = -1 // Default sort
+    }
+  }
+
+  if (Object.keys(sort_obj).length === 0) {
+    sort_obj.created_at = -1 // Default sort si no hay criterios
+  }
+
+  // Ejecutar queries
+  const skip = (params.page - 1) * params.size
+
+  const [sessions, total_count] = await Promise.all([
+    collection
+      .find(filters)
+      .sort(sort_obj)
+      .skip(skip)
+      .limit(params.size)
+      .toArray(),
+    collection.countDocuments(filters)
+  ])
+
+  return {
+    sessions,
+    total_count,
+    total_pages: Math.ceil(total_count / params.size)
+  }
+}
+
+/**
+ * Estadísticas rápidas para el dashboard admin
+ */
+export async function getAbandonedStatsForAdmin (
+  seller_id: number,
+  date_range: DateRange
+) {
+  const db = await connectToDatabase()
+  const collection = db.collection(SESSION_COLLECTION)
+
+  const filters = {
+    seller_id,
+    created_at: {
+      $gte: date_range.start,
+      $lte: date_range.end
+    }
+  }
+
+  const stats = await collection.aggregate([
+    { $match: filters },
+    {
+      $group: {
+        _id: null,
+        total_sessions: { $sum: 1 },
+        total_amount: { $sum: '$total_amount' },
+        cart_sessions: {
+          $sum: {
+            $cond: [{ $eq: ['$session_type', 'CART_ORIGINATED'] }, 1, 0]
+          }
+        },
+        checkout_sessions: {
+          $sum: {
+            $cond: [{ $eq: ['$session_type', 'CHECKOUT_DIRECT'] }, 1, 0]
+          }
+        },
+        recovered_sessions: {
+          $sum: {
+            $cond: [
+              {
+                $or: [
+                  { $eq: ['$status.cart', 'RECOVERED'] },
+                  { $eq: ['$status.checkout', 'RECOVERED'] }
+                ]
+              },
+              1,
+              0
+            ]
+          }
+        }
+      }
+    }
+  ]).toArray()
+
+  return stats[0] || {
+    total_sessions: 0,
+    total_amount: 0,
+    cart_sessions: 0,
+    checkout_sessions: 0,
+    recovered_sessions: 0
+  }
+}
+
+// ==========================================
+// ADMIN STATS REPOSITORY METHODS
+// ==========================================
+
+/**
+ * Obtiene métricas agregadas para un rango de fechas
+ */
+export async function getMetricsForPeriod (
+  seller_id: number,
+  date_range: DateRange
+): Promise<MetricsData> {
+  const db = await connectToDatabase()
+  const collection = db.collection(METRICS_COLLECTION)
+
+  // Generar array de fechas en formato YYYY-MM-DD
+  const dates = generateDateArray(date_range.start, date_range.end)
+
+  const metrics = await collection.aggregate([
+    {
+      $match: {
+        seller_id,
+        date: { $in: dates }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        cart_abandoned: { $sum: { $ifNull: ['$cart.abandoned', 0] } },
+        cart_abandoned_amount: { $sum: { $ifNull: ['$cart.abandoned_amount', 0] } },
+        cart_recovered: { $sum: { $ifNull: ['$cart.recovered', 0] } },
+        cart_recovered_amount: { $sum: { $ifNull: ['$cart.recovered_amount', 0] } },
+        checkout_abandoned: { $sum: { $ifNull: ['$checkout.abandoned', 0] } },
+        checkout_abandoned_amount: { $sum: { $ifNull: ['$checkout.abandoned_amount', 0] } },
+        checkout_recovered: { $sum: { $ifNull: ['$checkout.recovered', 0] } },
+        checkout_recovered_amount: { $sum: { $ifNull: ['$checkout.recovered_amount', 0] } },
+        total_abandoned_amount: { $sum: { $ifNull: ['$totals.total_abandoned_amount', 0] } },
+        total_recovered_amount: { $sum: { $ifNull: ['$totals.total_recovered_amount', 0] } }
+      }
+    }
+  ]).toArray()
+
+  const result = metrics[0] || {}
+
+  return {
+    cart: {
+      abandoned: result.cart_abandoned || 0,
+      abandoned_amount: result.cart_abandoned_amount || 0,
+      recovered: result.cart_recovered || 0,
+      recovered_amount: result.cart_recovered_amount || 0
+    },
+    checkout: {
+      abandoned: result.checkout_abandoned || 0,
+      abandoned_amount: result.checkout_abandoned_amount || 0,
+      recovered: result.checkout_recovered || 0,
+      recovered_amount: result.checkout_recovered_amount || 0
+    },
+    totals: {
+      total_abandoned_amount: result.total_abandoned_amount || 0,
+      total_recovered_amount: result.total_recovered_amount || 0
+    }
+  }
+}
+
+/**
+ * Genera array de fechas en formato YYYY-MM-DD
+ */
+function generateDateArray (start: Date, end: Date): string[] {
+  const dates: string[] = []
+  const current = new Date(start)
+
+  while (current <= end) {
+    dates.push(formatDateKey(current))
+    current.setDate(current.getDate() + 1)
+  }
+
+  return dates
+}
+
+/**
+ * Formatea fecha a string YYYY-MM-DD
+ */
+function formatDateKey (date: Date): string {
+  return date.toISOString().split('T')[0]
 }

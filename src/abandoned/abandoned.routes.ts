@@ -4,19 +4,24 @@ import * as controller from './abandoned.controller'
 const abandonedRoutes = new Hono()
 
 // 🛒 Crear sesión de carrito abandonado
-abandonedRoutes.post('/:sellerId/abandoned/cart', controller.createCartAbandoned)
+abandonedRoutes.post('/:seller_id/abandoned/cart', controller.createCartAbandoned)
 
-// 🔁 Actualizar sesión por cartId (productos/evento)
-abandonedRoutes.put('/:sellerId/abandoned/cart/:cartId', controller.updateCartAbandoned)
+// 🔁 Actualizar sesión por cart_id (productos/evento)
+abandonedRoutes.put('/:seller_id/abandoned/cart/:cart_id', controller.updateCartAbandoned)
 
-// 📦 Checkout abandonado (anónimo, sin cartId)
-abandonedRoutes.post('/:sellerId/abandoned/checkout', controller.createCheckoutAbandoned)
+// 📦 Checkout abandonado (anónimo, sin cart_id)
+abandonedRoutes.post('/:seller_id/abandoned/checkout', controller.createCheckoutAbandoned)
 
-// 📦 Checkout abandonado con cartId
-abandonedRoutes.put('/:sellerId/abandoned/checkout/:checkoutUlid', controller.updateCheckoutAbandoned)
+// 📦 Checkout abandonado con cart_id
+abandonedRoutes.put('/:seller_id/abandoned/checkout/:checkout_ulid', controller.updateCheckoutAbandoned)
 
 // 🔁 Marcar sesión como recuperada
-abandonedRoutes.patch('/:sellerId/abandoned/recover', controller.markAsRecovered)
+abandonedRoutes.patch('/:seller_id/abandoned/recover', controller.markAsRecovered)
+
+// 📊 NUEVO: Admin - Listar carritos y checkouts abandonados
+abandonedRoutes.get('/admin/:seller_id/abandoned', controller.listAbandonedSessions)
+// 📈 Admin - Estadísticas de abandonados
+abandonedRoutes.get('/admin/:seller_id/abandoned/stats', controller.getAbandonedStats)
 
 abandonedRoutes.post('/abandoned/flat-batch', controller.createFlatBatchAbandonedCarts)
 
