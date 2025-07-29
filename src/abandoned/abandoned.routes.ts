@@ -18,6 +18,9 @@ abandonedRoutes.put('/:seller_id/abandoned/checkout/:checkout_ulid', controller.
 // 🔁 Marcar sesión como recuperada
 abandonedRoutes.patch('/:seller_id/abandoned/recover', controller.markAsRecovered)
 
+// 📊 NUEVO: Admin - Listar carritos y checkouts abandonados
+abandonedRoutes.get('/admin/:seller_id/abandoned', controller.listAbandonedSessions)
+
 abandonedRoutes.post('/abandoned/flat-batch', controller.createFlatBatchAbandonedCarts)
 
 export default abandonedRoutes

@@ -395,3 +395,46 @@ export const createFlatBatchAbandonedCarts = withImprovedTiming('createFlatBatch
     data: result
   }))
 })
+
+// ==========================================
+// ADMIN ENDPOINTS
+// ==========================================
+
+export const listAbandonedSessions = withImprovedTiming('listAbandonedSessions', async (c: Context) => {
+  const seller_id = Number(c.req.param('seller_id'))
+
+  if (!seller_id || seller_id <= 0) {
+    throw new Error('Invalid seller_id: must be a positive number')
+  }
+
+  // Extraer query parameters
+  const query = {
+    page: parseInt(c.req.query('page') || '1'),
+    size: parseInt(c.req.query('size') || '20'),
+    sort_by: c.req.query('sort_by') || '',
+    interval: c.req.query('interval') as 'today' | '7days' | '30days' || '30days',
+    search: c.req.query('search') || '',
+    status: c.req.query('status') as 'ABANDONED' | 'RECOVERED' | 'ACTIVE' || undefined
+  }
+
+  // Validaciones
+  if (query.page < 1) {
+    throw new Error('Invalid page: must be >= 1')
+  }
+
+  if (query.size < 1 || query.size > 100) {
+    throw new Error('Invalid size: must be between 1 and 100')
+  }
+
+  if (query.interval && !['today', '7days', '30days'].includes(query.interval)) {
+    throw new Error('Invalid interval: must be today, 7days, or 30days')
+  }
+
+  if (query.status && !['ABANDONED', 'RECOVERED', 'ACTIVE'].includes(query.status)) {
+    throw new Error('Invalid status: must be ABANDONED, RECOVERED, or ACTIVE')
+  }
+
+  const result = await service.handleListAbandonedSessions(seller_id, query)
+
+  return Response.json(result)
+})

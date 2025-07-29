@@ -2,10 +2,16 @@ import { generateDateKey } from '../utils/date'
 import { AbandonedSession } from './abandoned.model.js'
 import * as repo from './abandoned.repository.js'
 import {
+  AdminAbandonedItem,
+  AdminListAbandonedQuery,
+  AdminListResponse,
+  AdminProductItem,
   CheckoutAbandonedPayload,
   CreateCartAbandonedPayload,
+  DateRange,
   FlatBatchAbandonedCartsPayload,
   MarkAsRecoveredPayload,
+  SortCriteria,
   UpdateCartPayload
 } from './abandoned.types.js'
 
@@ -1035,4 +1041,235 @@ async function processMicroBatchCarts (
   }
 
   return { ...stats, created_carts } // ✅ RETORNAR created_carts
+}
+
+// ==========================================
+// ADMIN SERVICE METHODS
+// ==========================================
+
+/**
+ * Maneja la lista de sesiones abandonadas para admin
+ */
+export async function handleListAbandonedSessions (
+  seller_id: number,
+  query: AdminListAbandonedQuery
+): Promise<AdminListResponse> {
+  try {
+    // 1. Parsear criterios de ordenamiento
+    const sort_criteria = parseSortCriteria(query.sort_by || '')
+
+    // 2. Calcular rango de fechas
+    const date_range = calculateDateRange(query.interval || '30days')
+
+    // 3. Parsear términos de búsqueda
+    const search_terms = parseSearchTerms(query.search || '')
+
+    // 4. Preparar parámetros
+    const params = {
+      seller_id,
+      page: query.page || 1,
+      size: Math.min(query.size || 20, 100), // Máximo 100
+      sort_criteria,
+      date_range,
+      search_terms,
+      status_filter: query.status
+    }
+
+    // 5. Obtener datos del repository
+    const result = await repo.getAbandonedSessionsForAdmin(params)
+
+    // 6. Transformar a formato de respuesta
+    const admin_items = result.sessions.map(session => transformToAdminItem(session))
+
+    // 7. Construir respuesta
+    const response: AdminListResponse = {
+      metadata: {
+        success: true,
+        message: 'Abandoned checkouts retrieved successfully',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        execution_time: '0ms' // Se actualizará por el wrapper
+      },
+      data: admin_items,
+      pagination: {
+        page: params.page,
+        size: params.size,
+        total_elements: result.total_count,
+        total_pages: result.total_pages
+      }
+    }
+
+    return response
+  } catch (error) {
+    console.error('Error in handleListAbandonedSessions:', error)
+    throw new Error(`Failed to retrieve abandoned sessions: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Parsea criterios de ordenamiento desde query string
+ * Ejemplo: "item_count:asc,total_amount:desc"
+ */
+function parseSortCriteria (sort_by: string): SortCriteria[] {
+  if (!sort_by.trim()) {
+    return [{ field: 'created_at', direction: 'desc' }] // Default
+  }
+
+  // ✅ Campos válidos actualizados a snake_case
+  const valid_fields = ['item_count', 'total_amount', 'created_at', 'status']
+  const criteria: SortCriteria[] = []
+
+  const parts = sort_by.split(',')
+
+  for (const part of parts) {
+    const [field, direction] = part.trim().split(':')
+
+    // ✅ También aceptar versiones en camelCase para retrocompatibilidad
+    let normalized_field = field
+    switch (field) {
+      case 'itemCount':
+        normalized_field = 'item_count'
+        break
+      case 'totalAmount':
+        normalized_field = 'total_amount'
+        break
+      case 'createdAt':
+        normalized_field = 'created_at'
+        break
+    }
+
+    if (valid_fields.includes(normalized_field) && ['asc', 'desc'].includes(direction)) {
+      criteria.push({
+        field: normalized_field,
+        direction: direction as 'asc' | 'desc'
+      })
+    }
+  }
+
+  // Si no hay criterios válidos, usar default
+  if (criteria.length === 0) {
+    criteria.push({ field: 'created_at', direction: 'desc' })
+  }
+
+  return criteria
+}
+/**
+ * Calcula rango de fechas basado en intervalo
+ */
+function calculateDateRange (interval: 'today' | '7days' | '30days'): DateRange {
+  const now = new Date()
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  let start: Date
+
+  switch (interval) {
+    case 'today':
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+      break
+    case '7days':
+      start = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000))
+      start.setHours(0, 0, 0, 0)
+      break
+    case '30days':
+    default:
+      start = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000))
+      start.setHours(0, 0, 0, 0)
+      break
+  }
+
+  return { start, end }
+}
+
+/**
+ * Parsea términos de búsqueda desde query string
+ * Ejemplo: "angel,producto" -> ["angel", "producto"]
+ */
+function parseSearchTerms (search: string): string[] {
+  if (!search.trim()) return []
+
+  return search
+    .split(',')
+    .map(term => term.trim())
+    .filter(term => term.length > 0)
+}
+
+/**
+ * Transforma sesión de BD a formato admin
+ */
+/**
+ * Transforma sesión de BD a formato admin (snake_case)
+ */
+function transformToAdminItem (session: any): AdminAbandonedItem {
+  // Determinar el ID principal
+  const checkout_id = session.identifiers?.checkout_ulid || session.identifiers?.cart_id || ''
+
+  // Determinar el tipo
+  const type = session.session_type === 'CART_ORIGINATED' ? 'cart' : 'purchase'
+
+  // Determinar status
+  const cart_status = session.status?.cart
+  const checkout_status = session.status?.checkout
+  const is_recovered = cart_status === 'RECOVERED' || checkout_status === 'RECOVERED'
+
+  // Extraer información del cliente
+  const customer_info = session.customer_info || {}
+  const customer_name = customer_info.full_name || customer_info.name || customer_info.email || ''
+  const email = customer_info.email || session.email || ''
+
+  // Transformar productos con estructura attributes
+  const products: AdminProductItem[] = (session.products || []).map((product: any) => {
+    // Construir attributes object con solo valores no nulos/vacíos
+    const attributes: { [key: string]: any } = {}
+
+    if (product.attributes?.size) attributes.size = product.attributes.size
+    if (product.attributes?.color) attributes.color = product.attributes.color
+    if (product.collection) attributes.collection = product.collection
+
+    // Agregar otros attributes si existen
+    if (product.attributes && typeof product.attributes === 'object') {
+      Object.keys(product.attributes).forEach(key => {
+        if (key !== 'size' && key !== 'color' && product.attributes[key]) {
+          attributes[key] = product.attributes[key]
+        }
+      })
+    }
+
+    return {
+      item_id: product.product_id || product.sku || product.id_t1 || '',
+      name: product.name || '',
+      quantity: product.quantity || 1,
+      price: product.unit_price || 0,
+      shipping: null, // No está en nuestro modelo actual
+      total: product.total_price || null,
+      attributes,
+      image_url: product.image_url || ''
+    }
+  })
+
+  // Generar timestamp
+  const created_timestamp = session.created_at
+    ? Math.floor(new Date(session.created_at).getTime() / 1000)
+    : Math.floor(Date.now() / 1000)
+
+  const recovered_timestamp = is_recovered && session.updated_at
+    ? Math.floor(new Date(session.updated_at).getTime() / 1000)
+    : 0
+
+  return {
+    seller_id: session.seller_id,
+    id: session._id?.toString() || '',
+    checkout_id,
+    customer: customer_name,
+    name: customer_name,
+    phone: customer_info.phone || '',
+    email,
+    total_amount: session.total_amount || 0,
+    timestamp: created_timestamp,
+    recovered_at: recovered_timestamp,
+    status: is_recovered ? 'recovered' : 'not_recovered',
+    type,
+    email_status: session.email_stats?.status || 'not_sent',
+    item_count: session.products_count || products.length,
+    details: {
+      products
+    }
+  }
 }
