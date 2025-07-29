@@ -1192,9 +1192,6 @@ function parseSearchTerms (search: string): string[] {
 }
 
 /**
- * Transforma sesión de BD a formato admin
- */
-/**
  * Transforma sesión de BD a formato admin (snake_case)
  */
 function transformToAdminItem (session: any): AdminAbandonedItem {
@@ -1216,17 +1213,16 @@ function transformToAdminItem (session: any): AdminAbandonedItem {
 
   // Transformar productos con estructura attributes
   const products: AdminProductItem[] = (session.products || []).map((product: any) => {
-    // Construir attributes object con solo valores no nulos/vacíos
+    // Construir attributes object con solo valores no nulos/vacíos (SIN collection)
     const attributes: { [key: string]: any } = {}
 
     if (product.attributes?.size) attributes.size = product.attributes.size
     if (product.attributes?.color) attributes.color = product.attributes.color
-    if (product.collection) attributes.collection = product.collection
 
-    // Agregar otros attributes si existen
+    // Agregar otros attributes si existen (EXCLUYENDO collection)
     if (product.attributes && typeof product.attributes === 'object') {
       Object.keys(product.attributes).forEach(key => {
-        if (key !== 'size' && key !== 'color' && product.attributes[key]) {
+        if (key !== 'size' && key !== 'color' && key !== 'collection' && product.attributes[key]) {
           attributes[key] = product.attributes[key]
         }
       })
@@ -1239,6 +1235,7 @@ function transformToAdminItem (session: any): AdminAbandonedItem {
       price: product.unit_price || 0,
       shipping: null, // No está en nuestro modelo actual
       total: product.total_price || null,
+      collection: product.collection || null, // ✅ FUERA de attributes
       attributes,
       image_url: product.image_url || ''
     }

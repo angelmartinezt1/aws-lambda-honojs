@@ -131,10 +131,10 @@ export interface AdminProductItem {
   price: number
   shipping: number | null
   total: number | null
+  collection: string | null
   attributes: {
     size?: string
     color?: string
-    collection?: string
     [key: string]: any
   }
   image_url: string
