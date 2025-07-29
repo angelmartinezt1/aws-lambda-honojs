@@ -64,7 +64,7 @@ async function withRetry<T> (
   max_retries = 3,
   base_delay = 100
 ): Promise<T> {
-  let last_error: Error
+  let last_error: Error = new Error('No attempts made')
 
   for (let attempt = 1; attempt <= max_retries; attempt++) {
     try {
@@ -80,7 +80,7 @@ async function withRetry<T> (
     }
   }
 
-  throw last_error!
+  throw last_error
 }
 
 // ==========================================
@@ -686,7 +686,7 @@ export async function handleFlatBatchAbandonedCarts (
 }> {
   const start_time = Date.now()
 
-  const seller_results = [] // ✅ Para recopilar resultados con carritos nuevos
+  const seller_results: any[] = [] // ✅ Para recopilar resultados con carritos nuevos
 
   console.log(`Processing flat batch ${payload.batch_id}`, {
     total_carts: payload.total_carts,

@@ -104,7 +104,7 @@ export const createFlatBatchAbandonedCarts = withTiming('createFlatBatchAbandone
   }
 
   // Validar que todos los carts tengan seller_id
-  const carts_without_seller_id = body.carts.filter(cart => !cart.seller_id)
+  const carts_without_seller_id = body.carts.filter((cart: any) => !cart.seller_id)
   if (carts_without_seller_id.length > 0) {
     throw new Error(`${carts_without_seller_id.length} carts are missing seller_id`)
   }
