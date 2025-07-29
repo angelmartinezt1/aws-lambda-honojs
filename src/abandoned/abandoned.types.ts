@@ -165,3 +165,59 @@ export interface DateRange {
   start: Date
   end: Date
 }
+
+// ==========================================
+// ADMIN STATS TYPES
+// ==========================================
+
+export interface AdminStatsQuery {
+  interval?: 'today' | '7days' | '30days'
+}
+
+export interface StatsMetric {
+  cart_percentage: number
+  change_percentage: number
+  purchase_percentage: number
+  total: number
+  previous_total: number
+}
+
+export interface AdminStatsResponse {
+  metadata: {
+    success: boolean
+    message: string
+    timestamp: string
+    execution_time: string
+  }
+  data: {
+    recovered: StatsMetric
+    pending_amount: StatsMetric
+    pending: StatsMetric
+    recovered_amount: StatsMetric
+  }
+  pagination: null
+}
+
+export interface MetricsData {
+  cart: {
+    abandoned: number
+    abandoned_amount: number
+    recovered?: number
+    recovered_amount?: number
+  }
+  checkout: {
+    abandoned: number
+    abandoned_amount: number
+    recovered?: number
+    recovered_amount?: number
+  }
+  totals: {
+    total_abandoned_amount: number
+    total_recovered_amount?: number
+  }
+}
+
+export interface PeriodComparison {
+  current: MetricsData
+  previous: MetricsData
+}

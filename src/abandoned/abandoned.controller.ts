@@ -438,3 +438,23 @@ export const listAbandonedSessions = withImprovedTiming('listAbandonedSessions',
 
   return Response.json(result)
 })
+
+export const getAbandonedStats = withImprovedTiming('getAbandonedStats', async (c: Context) => {
+  const seller_id = Number(c.req.param('seller_id'))
+
+  if (!seller_id || seller_id <= 0) {
+    throw new Error('Invalid seller_id: must be a positive number')
+  }
+
+  // Extraer query parameters
+  const interval = c.req.query('interval') as 'today' | '7days' | '30days' || 'today'
+
+  // Validaciones
+  if (!['today', '7days', '30days'].includes(interval)) {
+    throw new Error('Invalid interval: must be today, 7days, or 30days')
+  }
+
+  const result = await service.handleGetAbandonedStats(seller_id, { interval })
+
+  return Response.json(result)
+})

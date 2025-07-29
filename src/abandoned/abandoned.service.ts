@@ -6,12 +6,16 @@ import {
   AdminListAbandonedQuery,
   AdminListResponse,
   AdminProductItem,
+  AdminStatsQuery,
+  AdminStatsResponse,
   CheckoutAbandonedPayload,
   CreateCartAbandonedPayload,
   DateRange,
   FlatBatchAbandonedCartsPayload,
   MarkAsRecoveredPayload,
+  MetricsData,
   SortCriteria,
+  StatsMetric,
   UpdateCartPayload
 } from './abandoned.types.js'
 
@@ -1268,5 +1272,172 @@ function transformToAdminItem (session: any): AdminAbandonedItem {
     details: {
       products
     }
+  }
+}
+// ==========================================
+// ADMIN STATS SERVICE METHODS
+// ==========================================
+
+/**
+ * Maneja la obtención de estadísticas de abandonados
+ */
+export async function handleGetAbandonedStats (
+  seller_id: number,
+  query: AdminStatsQuery
+): Promise<AdminStatsResponse> {
+  try {
+    const interval = query.interval || 'today'
+
+    // 1. Calcular rangos de fechas (actual y anterior)
+    const { current_range, previous_range } = calculateStatsDateRanges(interval)
+
+    // 2. Obtener métricas para ambos periodos
+    const [current_metrics, previous_metrics] = await Promise.all([
+      repo.getMetricsForPeriod(seller_id, current_range),
+      repo.getMetricsForPeriod(seller_id, previous_range)
+    ])
+
+    // 3. Calcular estadísticas comparativas
+    const stats = calculateComparativeStats(current_metrics, previous_metrics)
+
+    // 4. Construir respuesta
+    const response: AdminStatsResponse = {
+      metadata: {
+        success: true,
+        message: 'Abandoned checkout statistics retrieved',
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        execution_time: '0ms' // Se actualizará por el wrapper
+      },
+      data: stats,
+      pagination: null
+    }
+
+    return response
+  } catch (error) {
+    console.error('Error in handleGetAbandonedStats:', error)
+    throw new Error(`Failed to retrieve abandoned stats: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+/**
+ * Calcula rangos de fechas para periodo actual y anterior
+ */
+function calculateStatsDateRanges (interval: 'today' | '7days' | '30days'): {
+  current_range: DateRange
+  previous_range: DateRange
+} {
+  const now = new Date()
+  const end_current = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  let start_current: Date
+  let days_back: number
+
+  switch (interval) {
+    case 'today':
+      start_current = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+      days_back = 1
+      break
+    case '7days':
+      start_current = new Date(now.getTime() - (6 * 24 * 60 * 60 * 1000)) // 6 días atrás + hoy = 7 días
+      start_current.setHours(0, 0, 0, 0)
+      days_back = 7
+      break
+    case '30days':
+    default:
+      start_current = new Date(now.getTime() - (29 * 24 * 60 * 60 * 1000)) // 29 días atrás + hoy = 30 días
+      start_current.setHours(0, 0, 0, 0)
+      days_back = 30
+      break
+  }
+
+  // Periodo anterior: mismo número de días hacia atrás
+  const end_previous = new Date(start_current.getTime() - (24 * 60 * 60 * 1000))
+  end_previous.setHours(23, 59, 59, 999)
+
+  const start_previous = new Date(end_previous.getTime() - ((days_back - 1) * 24 * 60 * 60 * 1000))
+  start_previous.setHours(0, 0, 0, 0)
+
+  return {
+    current_range: { start: start_current, end: end_current },
+    previous_range: { start: start_previous, end: end_previous }
+  }
+}
+
+/**
+ * Calcula estadísticas comparativas entre periodos
+ */
+function calculateComparativeStats (
+  current: MetricsData,
+  previous: MetricsData
+): {
+    recovered: StatsMetric
+    pending_amount: StatsMetric
+    pending: StatsMetric
+    recovered_amount: StatsMetric
+  } {
+  // Totales actuales
+  const current_recovered = (current.cart.recovered || 0) + (current.checkout.recovered || 0)
+  const current_pending = current.cart.abandoned + current.checkout.abandoned
+  const current_recovered_amount = (current.cart.recovered_amount || 0) + (current.checkout.recovered_amount || 0)
+  const current_pending_amount = current.cart.abandoned_amount + current.checkout.abandoned_amount
+
+  // Totales anteriores
+  const previous_recovered = (previous.cart.recovered || 0) + (previous.checkout.recovered || 0)
+  const previous_pending = previous.cart.abandoned + previous.checkout.abandoned
+  const previous_recovered_amount = (previous.cart.recovered_amount || 0) + (previous.checkout.recovered_amount || 0)
+  const previous_pending_amount = previous.cart.abandoned_amount + previous.checkout.abandoned_amount
+
+  return {
+    recovered: calculateMetric(
+      current.cart.recovered || 0,
+      current.checkout.recovered || 0,
+      current_recovered,
+      previous_recovered
+    ),
+    pending: calculateMetric(
+      current.cart.abandoned,
+      current.checkout.abandoned,
+      current_pending,
+      previous_pending
+    ),
+    recovered_amount: calculateMetric(
+      current.cart.recovered_amount || 0,
+      current.checkout.recovered_amount || 0,
+      current_recovered_amount,
+      previous_recovered_amount
+    ),
+    pending_amount: calculateMetric(
+      current.cart.abandoned_amount,
+      current.checkout.abandoned_amount,
+      current_pending_amount,
+      previous_pending_amount
+    )
+  }
+}
+
+/**
+ * Calcula métrica individual con porcentajes
+ */
+function calculateMetric (
+  cart_value: number,
+  checkout_value: number,
+  total_current: number,
+  total_previous: number
+): StatsMetric {
+  const cart_percentage = total_current > 0 ? (cart_value / total_current) * 100 : 0
+  const purchase_percentage = total_current > 0 ? (checkout_value / total_current) * 100 : 0
+
+  let change_percentage = 0
+  if (total_previous > 0) {
+    change_percentage = ((total_current - total_previous) / total_previous) * 100
+  } else if (total_current > 0) {
+    change_percentage = 100 // 100% de incremento si antes era 0
+  }
+
+  return {
+    cart_percentage: Math.round(cart_percentage * 100) / 100,
+    change_percentage: Math.round(change_percentage * 100) / 100,
+    purchase_percentage: Math.round(purchase_percentage * 100) / 100,
+    total: total_current,
+    previous_total: total_previous
   }
 }

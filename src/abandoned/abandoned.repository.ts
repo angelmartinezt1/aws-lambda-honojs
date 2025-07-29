@@ -1,6 +1,6 @@
 import { connectToDatabase } from '../config/mongo.js'
 import { AbandonedEvent, AbandonedSession } from './abandoned.model.js'
-import { DateRange, SortCriteria } from './abandoned.types.js'
+import { DateRange, MetricsData, SortCriteria } from './abandoned.types.js'
 
 const SESSION_COLLECTION = 'abandoned_sessions'
 const METRICS_COLLECTION = 'abandoned_metrics'
@@ -442,4 +442,89 @@ export async function getAbandonedStatsForAdmin (
     checkout_sessions: 0,
     recovered_sessions: 0
   }
+}
+
+// ==========================================
+// ADMIN STATS REPOSITORY METHODS
+// ==========================================
+
+/**
+ * Obtiene métricas agregadas para un rango de fechas
+ */
+export async function getMetricsForPeriod (
+  seller_id: number,
+  date_range: DateRange
+): Promise<MetricsData> {
+  const db = await connectToDatabase()
+  const collection = db.collection(METRICS_COLLECTION)
+
+  // Generar array de fechas en formato YYYY-MM-DD
+  const dates = generateDateArray(date_range.start, date_range.end)
+
+  const metrics = await collection.aggregate([
+    {
+      $match: {
+        seller_id,
+        date: { $in: dates }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        cart_abandoned: { $sum: { $ifNull: ['$cart.abandoned', 0] } },
+        cart_abandoned_amount: { $sum: { $ifNull: ['$cart.abandoned_amount', 0] } },
+        cart_recovered: { $sum: { $ifNull: ['$cart.recovered', 0] } },
+        cart_recovered_amount: { $sum: { $ifNull: ['$cart.recovered_amount', 0] } },
+        checkout_abandoned: { $sum: { $ifNull: ['$checkout.abandoned', 0] } },
+        checkout_abandoned_amount: { $sum: { $ifNull: ['$checkout.abandoned_amount', 0] } },
+        checkout_recovered: { $sum: { $ifNull: ['$checkout.recovered', 0] } },
+        checkout_recovered_amount: { $sum: { $ifNull: ['$checkout.recovered_amount', 0] } },
+        total_abandoned_amount: { $sum: { $ifNull: ['$totals.total_abandoned_amount', 0] } },
+        total_recovered_amount: { $sum: { $ifNull: ['$totals.total_recovered_amount', 0] } }
+      }
+    }
+  ]).toArray()
+
+  const result = metrics[0] || {}
+
+  return {
+    cart: {
+      abandoned: result.cart_abandoned || 0,
+      abandoned_amount: result.cart_abandoned_amount || 0,
+      recovered: result.cart_recovered || 0,
+      recovered_amount: result.cart_recovered_amount || 0
+    },
+    checkout: {
+      abandoned: result.checkout_abandoned || 0,
+      abandoned_amount: result.checkout_abandoned_amount || 0,
+      recovered: result.checkout_recovered || 0,
+      recovered_amount: result.checkout_recovered_amount || 0
+    },
+    totals: {
+      total_abandoned_amount: result.total_abandoned_amount || 0,
+      total_recovered_amount: result.total_recovered_amount || 0
+    }
+  }
+}
+
+/**
+ * Genera array de fechas en formato YYYY-MM-DD
+ */
+function generateDateArray (start: Date, end: Date): string[] {
+  const dates: string[] = []
+  const current = new Date(start)
+
+  while (current <= end) {
+    dates.push(formatDateKey(current))
+    current.setDate(current.getDate() + 1)
+  }
+
+  return dates
+}
+
+/**
+ * Formatea fecha a string YYYY-MM-DD
+ */
+function formatDateKey (date: Date): string {
+  return date.toISOString().split('T')[0]
 }

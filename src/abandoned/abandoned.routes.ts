@@ -20,6 +20,8 @@ abandonedRoutes.patch('/:seller_id/abandoned/recover', controller.markAsRecovere
 
 // 📊 NUEVO: Admin - Listar carritos y checkouts abandonados
 abandonedRoutes.get('/admin/:seller_id/abandoned', controller.listAbandonedSessions)
+// 📈 Admin - Estadísticas de abandonados
+abandonedRoutes.get('/admin/:seller_id/abandoned/stats', controller.getAbandonedStats)
 
 abandonedRoutes.post('/abandoned/flat-batch', controller.createFlatBatchAbandonedCarts)
 
