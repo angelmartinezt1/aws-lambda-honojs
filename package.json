@@ -11,7 +11,7 @@
     "dev": "tsx watch --env-file=.env src/server.ts"
   },
   "devDependencies": {
-    "@types/node": "^24.0.14",
+    "@types/node": "^25.0.2",
     "esbuild": "^0.27.0",
     "eslint": "^9.31.0",
     "neostandard": "^0.12.2",
